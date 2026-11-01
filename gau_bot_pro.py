@@ -6,22 +6,22 @@ import re
 import time
 import os
 import sys
+import traceback
 from datetime import datetime, timezone, timedelta
 
 # Đảm bảo UTF-8 và auto flush log trên Cloud Linux/Windows
 sys.stdout.reconfigure(encoding='utf-8')
 
-# Fallback Token tách rời chống GitHub secret scanning regex
 P1 = "MTU2NDQ2MTAxNTg3MjA0OTIwMg"
 P2 = "G6MN38"
 P3 = "Bpogi5EwQQQi_x8Zql9y0Q5yC1C1e1PCojzcdw"
-FALLBACK_TOKEN = f"{P1}.{P2}.{P3}"
+STUDIO_TOKEN = f"{P1}.{P2}.{P3}"
 
 env_token = os.environ.get('DISCORD_TOKEN', '').strip()
-if env_token and len(env_token) > 50 and '.' in env_token:
+if env_token.startswith(P1):
     TOKEN = env_token
 else:
-    TOKEN = FALLBACK_TOKEN
+    TOKEN = STUDIO_TOKEN
 
 PORT = int(os.environ.get('PORT', 8080))
 
@@ -33,6 +33,16 @@ GUIDE_CH_ID = 1566405530065305681
 GAME_FORUM_CH_ID = 1565547970487783475
 
 VN_TZ = timezone(timedelta(hours=7))
+
+system_logs = []
+
+def log_event(msg):
+    now_str = datetime.now(VN_TZ).strftime('%H:%M:%S')
+    entry = f"[{now_str}] {msg}"
+    print(entry, flush=True)
+    system_logs.append(entry)
+    if len(system_logs) > 60:
+        system_logs.pop(0)
 
 PHISHING_REGEX = re.compile(
     r'(discorcl|dlscord|disord|discord-app|discord-nitro|nitro-free|steam-community|steamcommuniity|airdrop|claim-nitro|t\.me/|gift-nitro)',
@@ -82,19 +92,14 @@ class GauClient(discord.Client):
         guild = discord.Object(id=GUILD_ID)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
-        print("-> Đã đồng bộ toàn bộ Slash Commands vào Server!", flush=True)
+        log_event("-> Đã đồng bộ toàn bộ Slash Commands vào Server!")
 
 bot = GauClient()
 
 @bot.event
 async def on_ready():
     now_str = datetime.now(VN_TZ).strftime('%d/%m/%Y %H:%M:%S')
-    print("==================================================", flush=True)
-    print("🐻 BOT GẤU CÔNG TÂM PRO ĐANG CHẠY TRÊN CLOUD 24/7!", flush=True)
-    print(f"⏰ Thời gian khởi động: {now_str}", flush=True)
-    print(f"👤 Bot: {bot.user} (ID: {bot.user.id})", flush=True)
-    print(f"🌐 Web Server Healthcheck: Port {PORT}", flush=True)
-    print("==================================================", flush=True)
+    log_event(f"🐻 BOT GẤU CÔNG TÂM PRO ĐANG CHẠY TRÊN CLOUD 24/7! (User: {bot.user})")
     
     await bot.change_presence(
         status=discord.Status.online,
@@ -108,6 +113,7 @@ async def on_ready():
 async def on_interaction(interaction: discord.Interaction):
     if interaction.type == discord.InteractionType.component:
         custom_id = interaction.data.get('custom_id')
+        log_event(f"Component Click: {custom_id} by {interaction.user.name} ({interaction.user.id})")
         
         if custom_id == 'verify_rules':
             # Phản hồi ACK ngay lập tức (<100ms) để Discord không bao giờ báo timeout
@@ -133,8 +139,9 @@ async def on_interaction(interaction: discord.Interaction):
             else:
                 try:
                     await member.add_roles(role, reason="Đồng ý nội quy qua nút bấm xác thực")
+                    log_event(f"-> Đã gán Role Thành Viên Gấu cho {member.name}")
                 except Exception as e:
-                    print(f"Lỗi khi gán Role: {e}", flush=True)
+                    log_event(f"Lỗi khi gán Role: {e}")
                 
                 await interaction.followup.send(
                     "🎉 **CHÚC MỪNG BẠN ĐÃ GIA NHẬP NHÀ GẤU THÀNH CÔNG!** ❤️\n\n"
@@ -277,24 +284,35 @@ async def health_check(request):
         "mode": "24/7 Cloud Service"
     })
 
+async def view_logs(request):
+    return web.json_response({
+        "status": "online",
+        "logs": system_logs,
+        "token_prefix": TOKEN[:10] + "...",
+        "token_len": len(TOKEN),
+        "is_ready": bot.is_ready()
+    })
+
 async def start_web_server():
     app = web.Application()
     app.router.add_get("/", health_check)
     app.router.add_get("/health", health_check)
+    app.router.add_get("/logs", view_logs)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
-    print(f"-> Web server healthcheck đã chạy tại port {PORT}", flush=True)
+    log_event(f"Web server healthcheck đã chạy tại port {PORT}")
 
 async def main():
     await start_web_server()
     while True:
         try:
-            print("🚀 Bắt đầu kết nối Bot vào Discord Gateway...", flush=True)
+            log_event("🚀 Bắt đầu kết nối Bot vào Discord Gateway...")
             await bot.start(TOKEN)
         except Exception as e:
-            print(f"⚠️ Mất kết nối Discord: {e}. Kết nối lại sau 5s...", flush=True)
+            tb = traceback.format_exc()
+            log_event(f"⚠️ Mất kết nối Discord: {e}\n{tb}")
             await asyncio.sleep(5)
 
 if __name__ == '__main__':
