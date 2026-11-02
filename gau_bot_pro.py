@@ -321,7 +321,7 @@ class FindGameRequestModal(discord.ui.Modal, title="🔍 NHỜ GẤU TÌM LINK G
             f"• [🔍 Link tìm nhanh SteamRIP](https://steamrip.com/?s={q})\n"
             f"• [🔍 Link tìm nhanh FitGirl Repacks](https://fitgirl-repacks.site/?s={q})\n"
             f"• [🔍 Link tìm nhanh DODI Repacks](https://dodi-repacks.site/?s={q})\n"
-            f"• [🔍 Link tìm nhanh GOG-Games](https://gog-games.to/search/{q})"
+            f"• [🔍 Link tìm nhanh Ova Games](https://ovagames.com/?s={q})"
         )
 
         # 1. Tạo Private Thread (Phòng kín 1:1 chỉ có người này và Admin)
