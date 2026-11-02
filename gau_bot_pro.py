@@ -954,7 +954,12 @@ async def main():
         except Exception as e:
             tb = traceback.format_exc()
             log_event(f"⚠️ Mất kết nối Discord: {e}\n{tb}")
-            await asyncio.sleep(5)
+            err_str = str(e)
+            if "429" in err_str or "rate limit" in err_str.lower() or "1015" in err_str:
+                log_event("⏳ Cloudflare Rate Limit (429/1015). Chờ 60s để giải tỏa IP...")
+                await asyncio.sleep(60)
+            else:
+                await asyncio.sleep(5)
 
 if __name__ == '__main__':
     asyncio.run(main())
