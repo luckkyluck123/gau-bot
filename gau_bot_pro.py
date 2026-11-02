@@ -35,6 +35,7 @@ GAME_FORUM_CH_ID = 1565547970487783475
 
 BUG_CH_ID = 1566438312212959344
 REQ_CH_ID = 1566438314133815369
+GUIDE_CHANNEL_ID = 1566598834061320355
 ADMIN_CH_ID = 1564476312926556330 # lệnh-quản-lý
 
 VN_TZ = timezone(timedelta(hours=7))
@@ -281,6 +282,98 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
         await interaction.followup.send(f"🎉 Đã gửi đề xuất tựa game **{self.game_name.value.strip()}** lên kênh để anh em cùng vote!", ephemeral=True)
 
 
+class FindGameRequestModal(discord.ui.Modal, title="🔍 NHỜ GẤU TÌM LINK GAME SẠCH"):
+    game_name = discord.ui.TextInput(
+        label="Tên tựa game bạn cần tìm",
+        placeholder="VD: Black Myth Wukong, Sekiro, Elden Ring, Resident Evil 4...",
+        max_length=80,
+        required=True
+    )
+    game_version = discord.ui.TextInput(
+        label="Phiên bản bạn mong muốn",
+        placeholder="VD: Bản cài sẵn giải nén chơi luôn, Bản Repack nhẹ máy...",
+        max_length=80,
+        required=False
+    )
+    notes = discord.ui.TextInput(
+        label="Ghi chú thêm (Link, cấu hình máy)",
+        placeholder="VD: Cần link Google Drive tốc độ cao, máy RAM 8GB...",
+        style=discord.TextStyle.paragraph,
+        max_length=500,
+        required=False
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        guide_ch = guild.get_channel(GUIDE_CHANNEL_ID)
+        if not guide_ch:
+            await interaction.followup.send("❌ Không tìm thấy kênh hướng dẫn cài game!", ephemeral=True)
+            return
+
+        gname = self.game_name.value.strip()
+        gver = self.game_version.value.strip() or "Bản chuẩn ổn định nhất"
+        gnotes = self.notes.value.strip() or "Không có ghi chú thêm"
+
+        import urllib.parse
+        q = urllib.parse.quote_plus(gname)
+        search_links = (
+            f"• [🔍 Link tìm nhanh SteamRIP](https://steamrip.com/?s={q})\n"
+            f"• [🔍 Link tìm nhanh FitGirl Repacks](https://fitgirl-repacks.site/?s={q})\n"
+            f"• [🔍 Link tìm nhanh Daominhha](https://daominhha.net/?s={q})"
+        )
+
+        # 1. Tạo Private Thread (Phòng kín 1:1 chỉ có người này và Admin)
+        clean_name = re.sub(r'[^a-zA-Z0-9\s_-]', '', gname)[:20].strip() or "Game"
+        thread_title = f"🔒・[{clean_name}]-{interaction.user.name}"[:40]
+        try:
+            thread = await guide_ch.create_thread(
+                name=thread_title,
+                type=discord.ChannelType.private_thread,
+                auto_archive_duration=1440,
+                invitable=False
+            )
+            await thread.add_user(interaction.user)
+        except Exception as e:
+            log_event(f"Lỗi tạo private thread: {e}")
+            await interaction.followup.send(f"❌ Không thể tạo phòng hỗ trợ riêng: {e}", ephemeral=True)
+            return
+
+        # 2. Gửi thẻ thông tin vào phòng riêng kèm nút TỰ ĐÓNG
+        embed = discord.Embed(
+            title=f"🔒 PHÒNG HỖ TRỢ TÌM GAME 1:1 — {gname.upper()}",
+            description=(
+                f"Chào mừng {interaction.user.mention} và Ban Quản Trị Studio!\n"
+                f"Đây là **phòng kín riêng tư 1:1** để hỗ trợ bạn tìm nguồn game an toàn, "
+                f"hoàn toàn sạch mã độc và không lo dính virus đào coin.\n\n"
+                f"🎮 **Tựa Game:** **{gname}**\n"
+                f"📦 **Phiên Bản Yêu Cầu:** `{gver}`\n"
+                f"📝 **Ghi Chú:** {gnotes}\n\n"
+                f"🤖 **Gợi Ý Nguồn Sạch Nhanh Từ Bot:**\n{search_links}\n\n"
+                f"👉 BQT sẽ sớm gửi link tải an toàn vào đây cho bạn.\n"
+                f"**Khi đã nhận được link hoặc tải xong, bạn hoặc BQT chỉ cần bấm nút đỏ bên dưới để đóng và dọn dẹp phòng này nhé!**"
+            ),
+            color=0x2ecc71
+        )
+        embed.set_footer(text=f"Phòng hỗ trợ 1:1 • {datetime.now(VN_TZ).strftime('%H:%M %d/%m/%Y')}")
+
+        view = discord.ui.View(timeout=None)
+        btn_close = discord.ui.Button(
+            label="🔒 Đã Nhận Link & Đóng Phòng",
+            style=discord.ButtonStyle.danger,
+            custom_id="btn_close_find_game_ticket"
+        )
+        view.add_item(btn_close)
+
+        await thread.send(f"🔔 {interaction.user.mention} <@&{ROLE_ADMIN_ID}> — Có yêu cầu tìm game mới!", embed=embed, view=view)
+
+        await interaction.followup.send(
+            f"🎉 **Đã tạo phòng hỗ trợ riêng 1:1 cho bạn thành công!**\n"
+            f"👉 Bạn hãy bấm vào đây để vào phòng: {thread.mention}\n"
+            f"*(Chỉ có bạn và Ban Quản Trị mới nhìn thấy phòng này nha!)*",
+            ephemeral=True
+        )
+
 # ==================== DASHBOARD & BANNERS ====================
 async def update_admin_dashboard(guild):
     admin_ch = guild.get_channel(ADMIN_CH_ID)
@@ -422,6 +515,42 @@ async def ensure_req_channel_banner(guild):
         log_event("-> Đã gắn Bảng Nút Đề Xuất vào kênh #💡・yêu-cầu-việt-hóa")
 
 
+async def ensure_guide_channel_banner(guild):
+    guide_ch = guild.get_channel(GUIDE_CHANNEL_ID)
+    if not guide_ch:
+        return
+    banner_msg = None
+    try:
+        async for m in guide_ch.history(limit=10):
+            if m.author == bot.user and m.embeds and "HỖ TRỢ TÌM NGUỒN GAME SẠCH" in (m.embeds[0].title or ""):
+                banner_msg = m
+                break
+    except:
+        pass
+
+    if not banner_msg:
+        embed = discord.Embed(
+            title="🔍 HỖ TRỢ TÌM NGUỒN GAME SẠCH — GẤU CÔNG TÂM",
+            description=(
+                "Anh em đang muốn chơi tựa game nào mà **chưa tìm thấy link tải sạch**, "
+                "hoặc **sợ dính virus đào coin** khi tải linh tinh trên mạng?\n\n"
+                "👉 Hãy bấm vào chiếc nút xanh bên dưới, điền tên tựa game bạn cần tìm. "
+                "Bot và Ban Quản Trị Studio sẽ hỗ trợ kiểm tra và tìm kiếm link an toàn giúp bạn ngay lập tức!"
+            ),
+            color=0x2ecc71
+        )
+        embed.set_footer(text="Studio Gấu Công Tâm • Cùng nhau chia sẻ - An toàn 100%")
+        view = discord.ui.View(timeout=None)
+        btn = discord.ui.Button(
+            label="🔍 Nhờ Gấu Hỗ Trợ Tìm Game Sạch",
+            style=discord.ButtonStyle.success,
+            custom_id="btn_open_find_game_modal"
+        )
+        view.add_item(btn)
+        await guide_ch.send(embed=embed, view=view)
+        log_event("-> Đã gắn Bảng Nút Nhờ Tìm Game vào kênh #📚・hướng-dẫn-cài-game")
+
+
 # ==================== BOT CLIENT ====================
 class GauClient(discord.Client):
     def __init__(self):
@@ -447,6 +576,7 @@ async def on_ready():
     if guild:
         await ensure_bug_channel_banner(guild)
         await ensure_req_channel_banner(guild)
+        await ensure_guide_channel_banner(guild)
         await update_admin_dashboard(guild)
 
     await bot.change_presence(
@@ -459,8 +589,31 @@ async def on_ready():
 
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
-    if interaction.type == discord.InteractionType.component:
-        custom_id = interaction.data.get('custom_id', '')
+    try:
+        if interaction.type == discord.InteractionType.component:
+            custom_id = interaction.data.get('custom_id', '')
+            log_event(f"👉 Nút bấm được nhấn: {custom_id} từ {interaction.user.name}")
+
+        # 7. Bấm nút Đóng Phòng Hỗ Trợ Tìm Game
+        if custom_id == 'btn_close_find_game_ticket':
+            await interaction.response.send_message(
+                "🔒 **Phòng hỗ trợ này đã hoàn thành nhiệm vụ!**\n"
+                "Hệ thống sẽ tự động dọn dẹp và xóa phòng sau **3 giây**...\n"
+                "❤️ Cảm ơn bạn đã luôn tin tưởng và đồng hành cùng Gấu Công Tâm!"
+            )
+            await asyncio.sleep(3)
+            try:
+                if isinstance(interaction.channel, discord.Thread):
+                    await interaction.channel.delete()
+                    log_event(f"-> Đã xóa và dọn dẹp phòng ticket: {interaction.channel.name}")
+            except Exception as e:
+                log_event(f"Lỗi xóa phòng ticket: {e}")
+            return
+
+        # 6. Bấm nút Nhờ Tìm Game -> Mở Modal Form
+        if custom_id == 'btn_open_find_game_modal':
+            await interaction.response.send_modal(FindGameRequestModal())
+            return
 
         # 1. Bấm nút Báo Lỗi -> Mở Modal Form
         if custom_id == 'btn_open_bug_modal':
@@ -571,6 +724,9 @@ async def on_interaction(interaction: discord.Interaction):
                     "Trong bất kỳ kênh chat nào, bạn chỉ cần gõ **`/trogiup`** hoặc **`/huongdan`** là Bot sẽ hiện bảng chỉ dẫn ngay lập tức!",
                     ephemeral=True
                 )
+    except Exception as e:
+        log_event(f"❌ LỖI ON_INTERACTION: {e}")
+        traceback.print_exc()
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -698,6 +854,54 @@ async def cmd_danhsachloi(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await update_admin_dashboard(interaction.guild)
     await interaction.followup.send(f"✅ Đã đồng bộ và cập nhật Bảng Gom Lỗi tại kênh <#{ADMIN_CH_ID}>!", ephemeral=True)
+
+@bot.tree.command(name="vinhdanh", description="Vinh danh Nhà Tài Trợ và tự động cấp Role VIP (Dành cho Admin)")
+@app_commands.describe(
+    user="Thành viên đã donate ủng hộ Studio",
+    amount="Số tiền ủng hộ (VD: 50.000 VNĐ, 100k, 200k...)",
+    message="Lời nhắn gửi từ người ủng hộ (tùy chọn)"
+)
+async def cmd_vinhdanh(interaction: discord.Interaction, user: discord.Member, amount: str, message: str = "Tiếp lửa cho Studio dịch game"):
+    if not interaction.user.guild_permissions.manage_roles:
+        await interaction.response.send_message("🚫 Chỉ Ban Quản Trị mới có quyền dùng lệnh vinh danh!", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    hall_ch = guild.get_channel(1566603377897636015)
+    role_vip = guild.get_role(ROLE_DONATOR_ID if 'ROLE_DONATOR_ID' in globals() else 1564467370758639699)
+
+    # 1. Cấp role VIP Nhà Tài Trợ Vàng
+    if role_vip and role_vip not in user.roles:
+        try:
+            await user.add_roles(role_vip, reason=f"Vinh danh ủng hộ {amount} từ Admin {interaction.user.name}")
+            log_event(f"-> Đã trao Role Nhà Tài Trợ Vàng cho {user.name}")
+        except Exception as e:
+            log_event(f"Lỗi trao Role VIP: {e}")
+
+    # 2. Đăng thẻ vinh danh vào kênh Bảng Vàng
+    embed = discord.Embed(
+        title="⭐ VINH DANH NHÀ TÀI TRỢ GẤU CÔNG TÂM ⭐",
+        description=(
+            "🎉 **XIN CHÂN THÀNH CẢM ƠN TẤM LÒNG VÀNG!**\n\n"
+            f"Studio Gấu Công Tâm xin trân trọng ghi nhận và tri ân sâu sắc sự ủng hộ quý báu từ chiến hữu {user.mention}:\n\n"
+            f"💰 **Số tiền tiếp lửa:** `{amount.strip()}`\n"
+            f"💬 **Lời nhắn gửi:** *\"{message.strip()}\"*\n"
+            "👑 **Danh hiệu trao tặng:** <@&1564467370758639699>\n\n"
+            "❤️ *Sự đồng hành của bạn là nguồn động lực vô giá để Gấu thức đêm mài giũa thêm thật nhiều tựa game Việt hóa đỉnh cao cho cộng đồng!*"
+        ),
+        color=0xf1c40f
+    )
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.set_footer(text=f"Bảng Vàng Tri Ân • {datetime.now(VN_TZ).strftime('%H:%M %d/%m/%Y')}")
+
+    if hall_ch:
+        await hall_ch.send(f"🔔 {user.mention} — Bạn vừa được vinh danh trên Bảng Vàng!", embed=embed)
+
+    await interaction.followup.send(
+        f"✅ Đã vinh danh {user.mention} ({amount}) thành công và đăng lên kênh <#1566603377897636015>!",
+        ephemeral=True
+    )
 
 @bot.tree.command(name="ping", description="Kiểm tra trạng thái hoạt động và độ trễ của Bot Gấu")
 async def cmd_ping(interaction: discord.Interaction):
