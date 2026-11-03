@@ -1,4 +1,14 @@
 import discord
+# Nạp thư viện Opus DLL để mã hóa và phát âm thanh Discord
+try:
+    if not discord.opus.is_loaded():
+        opus_path = os.path.join(os.path.dirname(discord.__file__), 'bin', 'libopus-0.x64.dll')
+        if os.path.exists(opus_path):
+            discord.opus.load_opus(opus_path)
+            log_event(f"-> Đã nạp thành công Opus DLL: {opus_path}")
+except Exception as e:
+    log_event(f"Cảnh báo nạp Opus DLL: {e}")
+
 
 
 
@@ -2559,15 +2569,17 @@ async def ensure_guide_channel_banner(guild):
 
 
 
-# ==================== PHÂN HỆ PHÁT NHẠC 24/7 (BÉ MIU) ====================
+# ==================== PHÂN HỆ PHÁT NHẠC 24/7 (BÉ MIU TRỮ TÌNH) ====================
 VOICE_MUSIC_CH_NAME = "📻・Nghe Nhạc 24/7"
-MUSIC_STREAM_URL = "https://streams.ilovemusic.de/iloveradio17.mp3" # 192kbps Lofi Chillhop 24/7
+# Luồng Bolero Trữ Tình 24/7 chất lượng cao
+MUSIC_STREAM_URL = "https://vnno-ne-3-tf-multi-playlist-zmp3.zmdcdn.me/BJ7DyJjfG_E/zhls/playback-realtime/audio/5bace800d4453d1b6454/audio.m3u8"
 
 async def maintain_voice_music(guild):
-    """Bé Miu ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Lofi du dương không bao giờ tắt"""
-    log_event("-> Đang khởi động tiến trình phát nhạc 24/7 của Bé Miu...")
+    """Bé Miu ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Trữ Tình Bolero du dương không bao giờ tắt"""
+    log_event("-> Đang khởi động tiến trình phát nhạc Trữ Tình 24/7 của Bé Miu...")
     while True:
         try:
+            # 1. Đảm bảo phòng voice tồn tại
             voice_ch = discord.utils.get(guild.voice_channels, name=VOICE_MUSIC_CH_NAME)
             if not voice_ch:
                 cat = None
@@ -2578,34 +2590,34 @@ async def maintain_voice_music(guild):
                 voice_ch = await guild.create_voice_channel(name=VOICE_MUSIC_CH_NAME, category=cat)
                 log_event(f"-> Đã tạo kênh voice: {VOICE_MUSIC_CH_NAME}")
 
-            # Đổi nickname bot thành tên nữ dễ thương
+            # 2. Đổi nickname bot thành tên nữ dễ thương
             member = guild.get_member(bot.user.id)
-            if member and member.nick != "🌸 Bé Miu — Nhạc Chill 24/7":
+            if member and member.nick != "🌸 Bé Miu — Nhạc Trữ Tình 24/7":
                 try:
-                    await member.edit(nick="🌸 Bé Miu — Nhạc Chill 24/7")
+                    await member.edit(nick="🌸 Bé Miu — Nhạc Trữ Tình 24/7")
                 except:
                     pass
 
-            # Kết nối vào phòng voice
+            # 3. Kết nối vào phòng voice
             vc = discord.utils.get(bot.voice_clients, guild=guild)
             if not vc or not vc.is_connected():
                 vc = await voice_ch.connect(reconnect=True, timeout=30.0)
                 log_event(f"-> 🌸 Bé Miu đã vào phòng {VOICE_MUSIC_CH_NAME}!")
 
-            # Nếu chưa phát nhạc thì phát luồng Lofi
+            # 4. Nếu chưa phát nhạc thì phát luồng Bolero Trữ Tình
             if not vc.is_playing():
                 ffmpeg_opts = {
-                    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-                    'options': '-vn -filter:a "volume=0.35"'
+                    'before_options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+                    'options': '-vn -filter:a "volume=0.55"'
                 }
                 audio = discord.FFmpegPCMAudio(MUSIC_STREAM_URL, **ffmpeg_opts)
                 vc.play(audio)
-                log_event("-> 🌸 Bé Miu đang phát nhạc Lofi Chill 24/7 mượt mà...")
+                log_event("-> 🌸 Bé Miu đang phát nhạc Trữ Tình Bolero 24/7 cực ngọt ngào...")
 
         except Exception as e:
             log_event(f"Cảnh báo duy trì nhạc voice: {e}")
 
-        await asyncio.sleep(20) # Kiểm tra định kỳ mỗi 20s
+        await asyncio.sleep(15) # Kiểm tra định kỳ mỗi 15s nếu rớt thì tự kết nối lại
 
 
 class GauClient(discord.Client):
