@@ -864,7 +864,6 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
 
 
         await update_admin_dashboard(guild)
-        asyncio.create_task(maintain_voice_music(guild))
 
 
 
@@ -2603,18 +2602,33 @@ async def maintain_voice_music(guild):
 
             # 3. Kết nối vào phòng voice
             vc = discord.utils.get(bot.voice_clients, guild=guild)
-            if not vc or not vc.is_connected():
+            if vc is not None:
+                if not vc.is_connected():
+                    try:
+                        await vc.disconnect(force=True)
+                    except:
+                        pass
+                    vc = None
+                elif vc.channel.id != voice_ch.id:
+                    await vc.move_to(voice_ch)
+
+            if vc is None:
                 vc = await voice_ch.connect(reconnect=True, timeout=30.0)
                 log_event(f"-> 🌸 Bé Miu đã vào phòng {VOICE_MUSIC_CH_NAME}!")
 
             # 4. Nếu chưa phát nhạc thì phát luồng Bolero Trữ Tình
             if not vc.is_playing():
+                def after_playing(err):
+                    if err:
+                        log_event(f"🌸 Bé Miu voice error: {err}")
+                    else:
+                        log_event("🌸 Bé Miu kết thúc luồng, tự động nạp lại ở chu kỳ tiếp theo.")
                 ffmpeg_opts = {
                     'before_options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
                     'options': '-vn -filter:a "volume=1.0"'
                 }
                 audio = discord.FFmpegPCMAudio(MUSIC_STREAM_URL, **ffmpeg_opts)
-                vc.play(audio)
+                vc.play(audio, after=after_playing)
                 log_event("-> 🌸 Bé Miu đang phát nhạc Trữ Tình Bolero 24/7 cực ngọt ngào...")
 
         except Exception as e:
@@ -2725,7 +2739,9 @@ async def on_ready():
 
 
         await update_admin_dashboard(guild)
-        asyncio.create_task(maintain_voice_music(guild))
+        if not hasattr(bot, '_voice_music_started'):
+            bot._voice_music_started = True
+            asyncio.create_task(maintain_voice_music(guild))
 
 
 
