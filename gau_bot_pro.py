@@ -86,7 +86,7 @@ def save_votes(votes):
         log_event(f"Lỗi lưu votes: {e}")
 
 PHISHING_REGEX = re.compile(
-    r'(discorcl|dlscord|disord|discord-app|discord-nitro|nitro-free|steam-community|steamcommuniity|airdrop|claim-nitro|t\.me/|gift-nitro)',
+    r'(discorcl|dlscord|disord|discord-app|discord-nitro|nitro-free|steam-community|steamcommuniity|airdrop|claim-nitro|t\.me/|gift-nitro|discord\.gg/|discord\.com/invite|quay\s*hũ|nổ\s*hũ|b52|sunwin|rikvip|casino|tài\s*xỉu|rút\s*tiền|crypto\s*bonus|bonus\s*code|activate\s*code)',
     re.IGNORECASE
 )
 
@@ -282,6 +282,120 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
         await interaction.followup.send(f"🎉 Đã gửi đề xuất tựa game **{self.game_name.value.strip()}** lên kênh để anh em cùng vote!", ephemeral=True)
 
 
+
+class InstallHelpRequestModal(discord.ui.Modal, title="🆘 NHỜ HỖ TRỢ CÀI ĐẶT GAME 1-1"):
+    game_name = discord.ui.TextInput(
+        label="Tên tựa game bạn đang cài đặt",
+        placeholder="VD: Final Fantasy Resonance, Borderlands 4, Brigandine...",
+        max_length=80,
+        required=True
+    )
+    issue_type = discord.ui.TextInput(
+        label="Vấn đề / Bước bạn đang bị kẹt",
+        placeholder="VD: Antivirus xóa mất file, GauLauncher không nhận game, kẹt mã PIN...",
+        max_length=100,
+        required=True
+    )
+    details = discord.ui.TextInput(
+        label="Mô tả chi tiết hoặc thông báo lỗi",
+        placeholder="VD: Màn hình đen, thiếu dll, hoặc không biết chép mod. Cần Admin hướng dẫn trực tiếp...",
+        style=discord.TextStyle.paragraph,
+        max_length=500,
+        required=False
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        guide_ch = guild.get_channel(GUIDE_CHANNEL_ID)
+        if not guide_ch:
+            await interaction.followup.send("❌ Không tìm thấy kênh hướng dẫn cài game!", ephemeral=True)
+            return
+
+        gname = self.game_name.value.strip()
+        issue = self.issue_type.value.strip()
+        gdetails = self.details.value.strip() or "Cần Admin hỗ trợ trực tiếp từng bước."
+
+        # 1. Tạo Private Thread (Phòng kín 1:1 chỉ có người này và Admin)
+        clean_name = re.sub(r'[^a-zA-Z0-9\s_-]', '', gname)[:16].strip() or "Game"
+        thread_title = f"🆘・[Cài-{clean_name}]-{interaction.user.name}"[:40]
+        try:
+            thread = await guide_ch.create_thread(
+                name=thread_title,
+                type=discord.ChannelType.private_thread,
+                auto_archive_duration=1440,
+                invitable=False
+            )
+            await thread.add_user(interaction.user)
+        except Exception as e:
+            log_event(f"Lỗi tạo private thread cài game: {e}")
+            await interaction.followup.send(f"❌ Không thể tạo phòng hỗ trợ riêng: {e}", ephemeral=True)
+            return
+
+        # 2. Gửi thẻ thông tin vào phòng riêng kèm nút ĐÓNG PHÒNG
+        embed = discord.Embed(
+            title=f"🆘 PHÒNG HỖ TRỢ CÀI ĐẶT GAME 1-1 — {gname.upper()}",
+            description=(
+                f"Chào mừng {interaction.user.mention} và **Bác Gấu (Admin Studio)**!\n"
+                f"Đây là **phòng kín hỗ trợ kỹ thuật 1:1**. Chỉ có bạn và Ban Quản Trị mới nhìn thấy và trò chuyện trong phòng này.\n\n"
+                f"🎮 **Tựa Game:** **{gname}**\n"
+                f"⚠️ **Vấn Đề Bị Kẹt:** `{issue}`\n"
+                f"📝 **Mô Tả Chi Tiết:** {gdetails}\n\n"
+                f"💬 **Bác Gấu (Admin) đã nhận được thông báo riêng và sẽ vào phòng nói chuyện trực tiếp với bạn ngay!**\n\n"
+                f"📸 **MẸO HỖ TRỢ NHANH:**\n"
+                f"• Bạn hãy **chụp ảnh màn hình lỗi** (nhấn phím `Windows + Shift + S` hoặc `PrintScreen`) rồi **dán trực tiếp vào khung chat này** để Admin bắt bệnh chuẩn xác 100% nhé.\n"
+                f"• Hai bên có thể nhắn tin trao đổi thoải mái, gửi link file hoặc UltraViewer/AnyDesk nếu cần hỗ trợ tận tay.\n\n"
+                f"🔒 **Phòng sẽ luôn mở cho đến khi bạn cài đặt và chơi game thành công!** Khi xong xuôi, bạn hoặc Admin chỉ cần bấm nút đỏ bên dưới để đóng dọn dẹp phòng này nhé."
+            ),
+            color=0xe74c3c
+        )
+        embed.set_footer(text=f"Phòng hỗ trợ kỹ thuật 1:1 • {datetime.now(VN_TZ).strftime('%H:%M %d/%m/%Y')}")
+
+        view = discord.ui.View(timeout=None)
+        btn_close = discord.ui.Button(
+            label="🔒 Đã Cài Xong & Đóng Phòng",
+            style=discord.ButtonStyle.danger,
+            custom_id="btn_close_install_help_ticket"
+        )
+        view.add_item(btn_close)
+
+        await thread.send(
+            f"🔔 {interaction.user.mention} <@&{ROLE_ADMIN_ID}> — Có thành viên cần hỗ trợ cài đặt game trực tiếp 1-1!",
+            embed=embed,
+            view=view
+        )
+
+        # 3. Gửi thông báo trực tiếp đến kênh #lệnh-quản-lý cho Admin
+        admin_ch = guild.get_channel(ADMIN_CH_ID)
+        if admin_ch:
+            admin_embed = discord.Embed(
+                title="🚨 CA HỖ TRỢ CÀI ĐẶT GAME MỚI (1-1)",
+                description=(
+                    f"👤 **Thành viên:** {interaction.user.mention} (`{interaction.user.name}`)\n"
+                    f"🎮 **Game:** **{gname}**\n"
+                    f"⚠️ **Sự cố:** `{issue}`\n"
+                    f"📝 **Chi tiết:** {gdetails}\n\n"
+                    f"👉 **[BẤM VÀO ĐÂY ĐỂ VÀO PHÒNG CHAT TRỰC TIẾP VỚI BẠN ẤY]({thread.jump_url})**"
+                ),
+                color=0xe74c3c
+            )
+            admin_embed.set_footer(text="Hệ thống Ticket Studio Gấu Công Tâm")
+            try:
+                await admin_ch.send(
+                    f"🚨 <@&{ROLE_ADMIN_ID}> Có ca cài game cần bạn vào hỗ trợ: {thread.mention}",
+                    embed=admin_embed
+                )
+            except Exception as e:
+                log_event(f"Lỗi gửi alert admin cài game: {e}")
+
+        await interaction.followup.send(
+            f"🎉 **Đã tạo phòng hỗ trợ cài đặt 1:1 cho bạn thành công!**\n"
+            f"👉 Bạn hãy bấm vào đây để vào phòng nói chuyện trực tiếp với Admin: {thread.mention}\n"
+            f"*(Chỉ có bạn và Admin mới nhìn thấy phòng này nha!)*",
+            ephemeral=True
+        )
+
+
 class FindGameRequestModal(discord.ui.Modal, title="🔍 NHỜ GẤU TÌM LINK GAME SẠCH"):
     game_name = discord.ui.TextInput(
         label="Tên tựa game bạn cần tìm",
@@ -326,7 +440,7 @@ class FindGameRequestModal(discord.ui.Modal, title="🔍 NHỜ GẤU TÌM LINK G
 
         # 1. Tạo Private Thread (Phòng kín 1:1 chỉ có người này và Admin)
         clean_name = re.sub(r'[^a-zA-Z0-9\s_-]', '', gname)[:20].strip() or "Game"
-        thread_title = f"🔒・[{clean_name}]-{interaction.user.name}"[:40]
+        thread_title = f"🔍・[{clean_name}]-{interaction.user.name}"[:40]
         try:
             thread = await guide_ch.create_thread(
                 name=thread_title,
@@ -342,17 +456,19 @@ class FindGameRequestModal(discord.ui.Modal, title="🔍 NHỜ GẤU TÌM LINK G
 
         # 2. Gửi thẻ thông tin vào phòng riêng kèm nút TỰ ĐÓNG
         embed = discord.Embed(
-            title=f"🔒 PHÒNG HỖ TRỢ TÌM GAME 1:1 — {gname.upper()}",
+            title=f"🔍 PHÒNG HỖ TRỢ TÌM GAME 1:1 — {gname.upper()}",
             description=(
-                f"Chào mừng {interaction.user.mention} và Ban Quản Trị Studio!\n"
+                f"Chào mừng {interaction.user.mention} và **Bác Gấu (Admin Studio)**!\n"
                 f"Đây là **phòng kín riêng tư 1:1** để hỗ trợ bạn tìm nguồn game an toàn, "
                 f"hoàn toàn sạch mã độc và không lo dính virus đào coin.\n\n"
                 f"🎮 **Tựa Game:** **{gname}**\n"
                 f"📦 **Phiên Bản Yêu Cầu:** `{gver}`\n"
                 f"📝 **Ghi Chú:** {gnotes}\n\n"
-                f"🤖 **Gợi Ý Nguồn Sạch Nhanh Từ Bot:**\n{search_links}\n\n"
-                f"👉 BQT sẽ sớm gửi link tải an toàn vào đây cho bạn.\n"
-                f"**Khi đã nhận được link hoặc tải xong, bạn hoặc BQT chỉ cần bấm nút đỏ bên dưới để đóng và dọn dẹp phòng này nhé!**"
+                f"🤖 **Gợi Ý Nguồn Sạch Nhanh Từ Bot (Tham khảo):**\n{search_links}\n\n"
+                f"💬 **TRAO ĐỔI TRỰC TIẾP VỚI ADMIN BÁC GẤU:**\n"
+                f"• Nếu bạn **không biết cách tải từ các trang trên** (sợ quảng cáo, không biết ghép file), hoặc **cần link Google Drive / Fshare tải nhanh**, hãy nhắn ngay vào đây!\n"
+                f"• Bác Gấu (Admin) đã nhận được thông báo và sẽ vào trò chuyện, gửi link tải an toàn cho bạn.\n\n"
+                f"🔒 **Phòng sẽ luôn mở để trao đổi.** Khi bạn đã nhận được link và tải xong, chỉ cần bấm nút đỏ bên dưới để dọn dẹp phòng này nhé!"
             ),
             color=0x2ecc71
         )
@@ -368,13 +484,35 @@ class FindGameRequestModal(discord.ui.Modal, title="🔍 NHỜ GẤU TÌM LINK G
 
         await thread.send(f"🔔 {interaction.user.mention} <@&{ROLE_ADMIN_ID}> — Có yêu cầu tìm game mới!", embed=embed, view=view)
 
+        # 3. Gửi thông báo trực tiếp đến kênh #lệnh-quản-lý cho Admin
+        admin_ch = guild.get_channel(ADMIN_CH_ID)
+        if admin_ch:
+            admin_embed = discord.Embed(
+                title="🔍 CA NHỜ TÌM LINK TẢI GAME MỚI (1-1)",
+                description=(
+                    f"👤 **Thành viên:** {interaction.user.mention} (`{interaction.user.name}`)\n"
+                    f"🎮 **Game:** **{gname}**\n"
+                    f"📦 **Phiên bản:** `{gver}`\n"
+                    f"📝 **Ghi chú:** {gnotes}\n\n"
+                    f"👉 **[BẤM VÀO ĐÂY ĐỂ VÀO PHÒNG GỬI LINK TẢI CHO BẠN ẤY]({thread.jump_url})**"
+                ),
+                color=0x2ecc71
+            )
+            admin_embed.set_footer(text="Hệ thống Ticket Studio Gấu Công Tâm")
+            try:
+                await admin_ch.send(
+                    f"🔍 <@&{ROLE_ADMIN_ID}> Có ca nhờ tìm link game: {thread.mention}",
+                    embed=admin_embed
+                )
+            except Exception as e:
+                log_event(f"Lỗi gửi alert admin tìm game: {e}")
+
         await interaction.followup.send(
             f"🎉 **Đã tạo phòng hỗ trợ riêng 1:1 cho bạn thành công!**\n"
             f"👉 Bạn hãy bấm vào đây để vào phòng: {thread.mention}\n"
             f"*(Chỉ có bạn và Ban Quản Trị mới nhìn thấy phòng này nha!)*",
             ephemeral=True
         )
-
 # ==================== DASHBOARD & BANNERS ====================
 async def update_admin_dashboard(guild):
     admin_ch = guild.get_channel(ADMIN_CH_ID)
@@ -523,33 +661,51 @@ async def ensure_guide_channel_banner(guild):
     banner_msg = None
     try:
         async for m in guide_ch.history(limit=10):
-            if m.author == bot.user and m.embeds and "HỖ TRỢ TÌM NGUỒN GAME SẠCH" in (m.embeds[0].title or ""):
+            if m.author == bot.user and m.embeds and any(k in (m.embeds[0].title or "") for k in ["HỖ TRỢ", "TÌM NGUỒN", "CÀI ĐẶT"]):
                 banner_msg = m
                 break
     except:
         pass
 
-    if not banner_msg:
-        embed = discord.Embed(
-            title="🔍 HỖ TRỢ TÌM NGUỒN GAME SẠCH — GẤU CÔNG TÂM",
-            description=(
-                "Anh em đang muốn chơi tựa game nào mà **chưa tìm thấy link tải sạch**, "
-                "hoặc **sợ dính virus đào coin** khi tải linh tinh trên mạng?\n\n"
-                "👉 Hãy bấm vào chiếc nút xanh bên dưới, điền tên tựa game bạn cần tìm. "
-                "Bot và Ban Quản Trị Studio sẽ hỗ trợ kiểm tra và tìm kiếm link an toàn giúp bạn ngay lập tức!"
-            ),
-            color=0x2ecc71
-        )
-        embed.set_footer(text="Studio Gấu Công Tâm • Cùng nhau chia sẻ - An toàn 100%")
-        view = discord.ui.View(timeout=None)
-        btn = discord.ui.Button(
-            label="🔍 Nhờ Gấu Hỗ Trợ Tìm Game Sạch",
-            style=discord.ButtonStyle.success,
-            custom_id="btn_open_find_game_modal"
-        )
-        view.add_item(btn)
+    embed = discord.Embed(
+        title="🎮 TRUNG TÂM HỖ TRỢ KỸ THUẬT & TÌM GAME 1-1 — GẤU CÔNG TÂM",
+        description=(
+            "Chào mừng anh em đến với **Studio Gấu Công Tâm**! "
+            "Để hỗ trợ anh em chơi game mượt mà và an toàn nhất, hệ thống có 2 mục hỗ trợ riêng tư **1-1 trực tiếp cùng Bác Gấu (Admin)**:\n\n"
+            "🔴 **1. HỖ TRỢ CÀI ĐẶT GAME & KHẮC PHỤC LỖI (1-1):**\n"
+            "• Bạn cài game bị lỗi, màn hình đen, văng game, thiếu file `.dll`?\n"
+            "• Bị Antivirus nuốt mất file, hoặc kẹt mã PIN / Gấu Launcher không nhận game?\n"
+            "👉 **Bấm nút đỏ bên dưới:** Hệ thống sẽ mở ngay 1 phòng kín riêng để Admin vào hướng dẫn cầm tay chỉ việc cho bạn!\n\n"
+            "🟢 **2. NHỜ TÌM LINK TẢI GAME SẠCH & AN TOÀN (1-1):**\n"
+            "• Bạn muốn chơi tựa game nào mà chưa tìm thấy link tải sạch, sợ virus đào coin?\n"
+            "• Không biết cách tải ở các trang web nước ngoài, cần link Google Drive / Fshare?\n"
+            "👉 **Bấm nút xanh bên dưới:** Điền tên game, Admin và Bot sẽ tìm và gửi link an toàn cho bạn trong phòng riêng!\n\n"
+            "🔒 *Mọi phòng hỗ trợ đều là Private Thread kín đáo (chỉ có bạn và Admin nhìn thấy), hai bên trò chuyện thoải mái đến khi xong mới đóng.*"
+        ),
+        color=0xe67e22
+    )
+    embed.set_footer(text="Studio Gấu Công Tâm • Hỗ trợ tận tâm 1-1 • An toàn 100%")
+
+    view = discord.ui.View(timeout=None)
+    btn_install = discord.ui.Button(
+        label="🆘 Nhờ Hỗ Trợ Cài Game 1-1",
+        style=discord.ButtonStyle.danger,
+        custom_id="btn_open_install_help_modal"
+    )
+    btn_find = discord.ui.Button(
+        label="🔍 Nhờ Tìm Link Tải Game Sạch",
+        style=discord.ButtonStyle.success,
+        custom_id="btn_open_find_game_modal"
+    )
+    view.add_item(btn_install)
+    view.add_item(btn_find)
+
+    if banner_msg:
+        await banner_msg.edit(embed=embed, view=view)
+        log_event("-> Đã cập nhật Bảng Nút Hỗ Trợ Kép vào kênh #📚・hướng-dẫn-cài-game")
+    else:
         await guide_ch.send(embed=embed, view=view)
-        log_event("-> Đã gắn Bảng Nút Nhờ Tìm Game vào kênh #📚・hướng-dẫn-cài-game")
+        log_event("-> Đã gắn Bảng Nút Hỗ Trợ Kép vào kênh #📚・hướng-dẫn-cài-game")
 
 
 # ==================== BOT CLIENT ====================
@@ -596,6 +752,21 @@ async def on_interaction(interaction: discord.Interaction):
             log_event(f"👉 Nút bấm được nhấn: {custom_id} từ {interaction.user.name}")
 
         # 7. Bấm nút Đóng Phòng Hỗ Trợ Tìm Game
+        if custom_id == 'btn_close_install_help_ticket':
+            await interaction.response.send_message(
+                "🔒 **Phòng hỗ trợ cài game này đã hoàn thành nhiệm vụ!**\n"
+                "Hệ thống sẽ tự động dọn dẹp và xóa phòng sau **3 giây**...\n"
+                "❤️ Chúc bạn chơi game thật vui vẻ cùng bản Việt Hóa Gấu Công Tâm!"
+            )
+            await asyncio.sleep(3)
+            try:
+                if isinstance(interaction.channel, discord.Thread):
+                    await interaction.channel.delete()
+                    log_event(f"-> Đã xóa và dọn dẹp phòng ticket cài game: {interaction.channel.name}")
+            except Exception as e:
+                log_event(f"Lỗi xóa phòng ticket: {e}")
+            return
+
         if custom_id == 'btn_close_find_game_ticket':
             await interaction.response.send_message(
                 "🔒 **Phòng hỗ trợ này đã hoàn thành nhiệm vụ!**\n"
@@ -612,6 +783,10 @@ async def on_interaction(interaction: discord.Interaction):
             return
 
         # 6. Bấm nút Nhờ Tìm Game -> Mở Modal Form
+        if custom_id == 'btn_open_install_help_modal':
+            await interaction.response.send_modal(InstallHelpRequestModal())
+            return
+
         if custom_id == 'btn_open_find_game_modal':
             await interaction.response.send_modal(FindGameRequestModal())
             return
@@ -742,27 +917,48 @@ async def on_message(message: discord.Message):
     content = message.content
     now = time.time()
 
-    # 1. Quét link độc hại
+    # 1. Quét link độc hại & cờ bạc / lừa đảo
     if PHISHING_REGEX.search(content):
         try:
             await message.delete()
         except:
             pass
+        try:
+            await member.timeout(timedelta(hours=1), reason="Spam link độc hại / cờ bạc lừa đảo")
+        except:
+            pass
         await message.channel.send(
-            f"⚠️ **CẢNH BÁO:** {member.mention}, tin nhắn của bạn chứa liên kết đáng ngờ/lừa đảo và đã bị xóa tự động để bảo vệ cộng đồng!"
+            f"⚠️ **CẢNH BÁO BẢO MẬT:** {member.mention} đã bị tạm khóa chat 1 giờ do gửi tin nhắn chứa nội dung cờ bạc/liên kết độc hại!",
+            delete_after=10
         )
+        log_ch = guild.get_channel(LOG_CH_ID)
+        if log_ch:
+            try:
+                await log_ch.send(f"🚨 **BẢO VỆ TỰ ĐỘNG:** Đã xóa tin nhắn và Timeout 1 giờ tài khoản `{member.name}` ({member.id}) vì spam nội dung nguy hại:\n`{content[:200]}`")
+            except:
+                pass
         return
 
-    # 2. Chặn tag @everyone
+    # 2. Chặn tag @everyone & @here
     if ('@everyone' in content or '@here' in content) and not member.guild_permissions.administrator:
         try:
             await message.delete()
         except:
             pass
+        try:
+            await member.timeout(timedelta(minutes=30), reason="Tự ý tag @everyone / @here")
+        except:
+            pass
         await message.channel.send(
-            f"🚫 {member.mention}, chỉ Ban Quản Trị mới được phép sử dụng thông báo `@everyone`!",
+            f"🚫 {member.mention}, chỉ Ban Quản Trị mới được phép sử dụng thông báo `@everyone`! Bạn bị tạm khóa chat 30 phút.",
             delete_after=5
         )
+        log_ch = guild.get_channel(LOG_CH_ID)
+        if log_ch:
+            try:
+                await log_ch.send(f"⚠️ **CẢNH BÁO:** Đã chặn và tạm khóa chat `{member.name}` ({member.id}) do tự ý tag @everyone/@here.")
+            except:
+                pass
         return
 
     # 3. Chống spam chat
