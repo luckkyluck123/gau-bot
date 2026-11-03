@@ -2,7 +2,7 @@ services:
   - type: web
     name: gau-bot-pro-24-7
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python -c "import static_ffmpeg; static_ffmpeg.add_paths()"
     startCommand: python gau_bot_pro.py
     envVars:
       - key: DISCORD_TOKEN
