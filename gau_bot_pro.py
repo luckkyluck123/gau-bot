@@ -221,15 +221,29 @@ def log_event(msg):
 
 
 
-# Nạp thư viện Opus DLL để mã hóa và phát âm thanh Discord
+# Nạp static-ffmpeg (đảm bảo 100% có ffmpeg trên cả Windows lẫn Render Linux Cloud)
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+    log_event("-> Đã nạp thành công static-ffmpeg vào PATH hệ thống!")
+except Exception as e:
+    log_event(f"Cảnh báo nạp static-ffmpeg: {e}")
+
+# Nạp thư viện Opus để mã hóa và phát âm thanh Discord
 try:
     if not discord.opus.is_loaded():
         opus_path = os.path.join(os.path.dirname(discord.__file__), 'bin', 'libopus-0.x64.dll')
         if os.path.exists(opus_path):
             discord.opus.load_opus(opus_path)
-            log_event(f"-> Đã nạp thành công Opus DLL: {opus_path}")
+            log_event(f"-> Đã nạp thành công Windows Opus DLL: {opus_path}")
+        else:
+            import ctypes.util
+            opus_lib = ctypes.util.find_library('opus')
+            if opus_lib:
+                discord.opus.load_opus(opus_lib)
+                log_event(f"-> Đã nạp thành công Linux Opus: {opus_lib}")
 except Exception as e:
-    log_event(f"Cảnh báo nạp Opus DLL: {e}")
+    log_event(f"Cảnh báo nạp Opus: {e}")
 
 def load_bugs():
 
@@ -2573,8 +2587,33 @@ async def ensure_guide_channel_banner(guild):
 
 # ==================== PHÂN HỆ PHÁT NHẠC 24/7 (BÉ MIU TRỮ TÌNH) ====================
 VOICE_MUSIC_CH_NAME = "📻・Nghe Nhạc 24/7"
-# Luồng Bolero Trữ Tình 24/7 chất lượng cao
-MUSIC_STREAM_URL = "http://71.4.56.20/3rdout/radio.hou.std2/icecast.audio" # 256kbps Nhạc Vàng & Bolero Trữ Tình 24/7
+LOCAL_MUSIC_DIR = r"E:\XUAT_TEXT_GAME\gau_music"
+FALLBACK_STREAM_URL = "http://71.4.56.20/3rdout/radio.hou.std2/icecast.audio"
+
+current_music_idx = 0
+
+def get_next_audio_source():
+    global current_music_idx
+    local_tracks = []
+    if os.path.exists(LOCAL_MUSIC_DIR):
+        for f in sorted(os.listdir(LOCAL_MUSIC_DIR)):
+            if f.lower().endswith(('.mp3', '.m4a', '.flac', '.wav')):
+                local_tracks.append(os.path.join(LOCAL_MUSIC_DIR, f))
+    
+    if local_tracks:
+        chosen = local_tracks[current_music_idx % len(local_tracks)]
+        current_music_idx += 1
+        log_event(f"-> 🌸 Bé Miu bắt đầu phát tuyển tập: {os.path.basename(chosen)}")
+        raw_audio = discord.FFmpegPCMAudio(chosen)
+        return discord.PCMVolumeTransformer(raw_audio, volume=1.0)
+    else:
+        log_event("-> 🌸 Bé Miu phát từ luồng trực tuyến Bolero 24/7...")
+        ffmpeg_opts = {
+            'before_options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+            'options': '-vn'
+        }
+        raw_audio = discord.FFmpegPCMAudio(FALLBACK_STREAM_URL, **ffmpeg_opts)
+        return discord.PCMVolumeTransformer(raw_audio, volume=1.0)
 
 async def maintain_voice_music(guild):
     """Bé Miu ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Trữ Tình Bolero du dương không bao giờ tắt"""
@@ -2616,25 +2655,22 @@ async def maintain_voice_music(guild):
                 vc = await voice_ch.connect(reconnect=True, timeout=30.0)
                 log_event(f"-> 🌸 Bé Miu đã vào phòng {VOICE_MUSIC_CH_NAME}!")
 
-            # 4. Nếu chưa phát nhạc thì phát luồng Bolero Trữ Tình
+            # 4. Nếu chưa phát nhạc thì phát bài tiếp theo
             if not vc.is_playing():
                 def after_playing(err):
                     if err:
                         log_event(f"🌸 Bé Miu voice error: {err}")
                     else:
-                        log_event("🌸 Bé Miu kết thúc luồng, tự động nạp lại ở chu kỳ tiếp theo.")
-                ffmpeg_opts = {
-                    'before_options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-                    'options': '-vn -filter:a "volume=1.0"'
-                }
-                audio = discord.FFmpegPCMAudio(MUSIC_STREAM_URL, **ffmpeg_opts)
-                vc.play(audio, after=after_playing)
+                        log_event("🌸 Bé Miu kết thúc bài, chuẩn bị phát bài tiếp theo.")
+                
+                audio_source = get_next_audio_source()
+                vc.play(audio_source, after=after_playing)
                 log_event("-> 🌸 Bé Miu đang phát nhạc Trữ Tình Bolero 24/7 cực ngọt ngào...")
 
         except Exception as e:
             log_event(f"Cảnh báo duy trì nhạc voice: {e}")
 
-        await asyncio.sleep(15) # Kiểm tra định kỳ mỗi 15s nếu rớt thì tự kết nối lại
+        await asyncio.sleep(5)
 
 
 class GauClient(discord.Client):
