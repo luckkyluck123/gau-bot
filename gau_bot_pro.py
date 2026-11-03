@@ -1,4 +1,25 @@
 import discord
+import discord.player
+
+# Vá lỗi pipe buffer underflow trên Windows và Cloud: Đảm bảo luôn đọc đủ 3840 bytes FRAME_SIZE không bị ngắt giữa chừng
+def _robust_ffmpeg_read(self) -> bytes:
+    target = discord.opus.Encoder.FRAME_SIZE
+    buf = bytearray()
+    while len(buf) < target:
+        try:
+            chunk = self._stdout.read(target - len(buf))
+            if not chunk:
+                break
+            buf.extend(chunk)
+        except Exception:
+            break
+    if len(buf) != target:
+        self._check_process_returncode()
+        return b''
+    return bytes(buf)
+
+discord.player.FFmpegPCMAudio.read = _robust_ffmpeg_read
+
 
 
 
