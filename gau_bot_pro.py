@@ -1,13 +1,5 @@
 import discord
-# Nạp thư viện Opus DLL để mã hóa và phát âm thanh Discord
-try:
-    if not discord.opus.is_loaded():
-        opus_path = os.path.join(os.path.dirname(discord.__file__), 'bin', 'libopus-0.x64.dll')
-        if os.path.exists(opus_path):
-            discord.opus.load_opus(opus_path)
-            log_event(f"-> Đã nạp thành công Opus DLL: {opus_path}")
-except Exception as e:
-    log_event(f"Cảnh báo nạp Opus DLL: {e}")
+
 
 
 
@@ -200,6 +192,7 @@ def log_event(msg):
 
 
 
+
     now_str = datetime.now(VN_TZ).strftime('%H:%M:%S')
 
 
@@ -227,6 +220,16 @@ def log_event(msg):
 
 
 
+
+# Nạp thư viện Opus DLL để mã hóa và phát âm thanh Discord
+try:
+    if not discord.opus.is_loaded():
+        opus_path = os.path.join(os.path.dirname(discord.__file__), 'bin', 'libopus-0.x64.dll')
+        if os.path.exists(opus_path):
+            discord.opus.load_opus(opus_path)
+            log_event(f"-> Đã nạp thành công Opus DLL: {opus_path}")
+except Exception as e:
+    log_event(f"Cảnh báo nạp Opus DLL: {e}")
 
 def load_bugs():
 
