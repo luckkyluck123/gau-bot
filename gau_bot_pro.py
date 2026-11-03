@@ -851,6 +851,7 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
 
 
         await update_admin_dashboard(guild)
+        asyncio.create_task(maintain_voice_music(guild))
 
 
 
@@ -2557,6 +2558,56 @@ async def ensure_guide_channel_banner(guild):
 
 
 
+
+# ==================== PHÂN HỆ PHÁT NHẠC 24/7 (BÉ MIU) ====================
+VOICE_MUSIC_CH_NAME = "📻・Nghe Nhạc 24/7"
+MUSIC_STREAM_URL = "https://streams.ilovemusic.de/iloveradio17.mp3" # 192kbps Lofi Chillhop 24/7
+
+async def maintain_voice_music(guild):
+    """Bé Miu ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Lofi du dương không bao giờ tắt"""
+    log_event("-> Đang khởi động tiến trình phát nhạc 24/7 của Bé Miu...")
+    while True:
+        try:
+            voice_ch = discord.utils.get(guild.voice_channels, name=VOICE_MUSIC_CH_NAME)
+            if not voice_ch:
+                cat = None
+                for c in guild.categories:
+                    if "THẢO LUẬN" in c.name.upper() or "GIAO LƯU" in c.name.upper():
+                        cat = c
+                        break
+                voice_ch = await guild.create_voice_channel(name=VOICE_MUSIC_CH_NAME, category=cat)
+                log_event(f"-> Đã tạo kênh voice: {VOICE_MUSIC_CH_NAME}")
+
+            # Đổi nickname bot thành tên nữ dễ thương
+            member = guild.get_member(bot.user.id)
+            if member and member.nick != "🌸 Bé Miu — Nhạc Chill 24/7":
+                try:
+                    await member.edit(nick="🌸 Bé Miu — Nhạc Chill 24/7")
+                except:
+                    pass
+
+            # Kết nối vào phòng voice
+            vc = discord.utils.get(bot.voice_clients, guild=guild)
+            if not vc or not vc.is_connected():
+                vc = await voice_ch.connect(reconnect=True, timeout=30.0)
+                log_event(f"-> 🌸 Bé Miu đã vào phòng {VOICE_MUSIC_CH_NAME}!")
+
+            # Nếu chưa phát nhạc thì phát luồng Lofi
+            if not vc.is_playing():
+                ffmpeg_opts = {
+                    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+                    'options': '-vn -filter:a "volume=0.35"'
+                }
+                audio = discord.FFmpegPCMAudio(MUSIC_STREAM_URL, **ffmpeg_opts)
+                vc.play(audio)
+                log_event("-> 🌸 Bé Miu đang phát nhạc Lofi Chill 24/7 mượt mà...")
+
+        except Exception as e:
+            log_event(f"Cảnh báo duy trì nhạc voice: {e}")
+
+        await asyncio.sleep(20) # Kiểm tra định kỳ mỗi 20s
+
+
 class GauClient(discord.Client):
 
 
@@ -2574,6 +2625,7 @@ class GauClient(discord.Client):
 
 
         intents.message_content = True
+        intents.voice_states = True
 
 
 
@@ -2658,6 +2710,7 @@ async def on_ready():
 
 
         await update_admin_dashboard(guild)
+        asyncio.create_task(maintain_voice_music(guild))
 
 
 
