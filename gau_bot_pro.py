@@ -2575,7 +2575,7 @@ async def ensure_guide_channel_banner(guild):
 # ==================== PHÂN HỆ PHÁT NHẠC 24/7 (BÉ MIU TRỮ TÌNH) ====================
 VOICE_MUSIC_CH_NAME = "📻・Nghe Nhạc 24/7"
 # Luồng Bolero Trữ Tình 24/7 chất lượng cao
-MUSIC_STREAM_URL = "https://vnno-ne-3-tf-multi-playlist-zmp3.zmdcdn.me/BJ7DyJjfG_E/zhls/playback-realtime/audio/5bace800d4453d1b6454/audio.m3u8"
+MUSIC_STREAM_URL = "http://71.4.56.20/3rdout/radio.hou.std2/icecast.audio" # 256kbps Nhạc Vàng & Bolero Trữ Tình 24/7
 
 async def maintain_voice_music(guild):
     """Bé Miu ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Trữ Tình Bolero du dương không bao giờ tắt"""
@@ -2611,7 +2611,7 @@ async def maintain_voice_music(guild):
             if not vc.is_playing():
                 ffmpeg_opts = {
                     'before_options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-                    'options': '-vn -filter:a "volume=0.55"'
+                    'options': '-vn -filter:a "volume=1.0"'
                 }
                 audio = discord.FFmpegPCMAudio(MUSIC_STREAM_URL, **ffmpeg_opts)
                 vc.play(audio)
