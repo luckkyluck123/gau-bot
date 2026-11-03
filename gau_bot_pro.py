@@ -2796,9 +2796,8 @@ async def on_ready():
 
 
         await update_admin_dashboard(guild)
-        if not hasattr(bot, '_voice_music_started'):
-            bot._voice_music_started = True
-            asyncio.create_task(maintain_voice_music(guild))
+        # Cloud chi chay quan tri, bao ve va slash commands; khong chay voice
+        log_event('-> Cloud Bot: Dang hoat dong o che do Quan Tri & Bao Ve 24/7.')
 
 
 
