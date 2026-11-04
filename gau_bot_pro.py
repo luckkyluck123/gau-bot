@@ -906,22 +906,23 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
 
 
 
+        join_view = discord.ui.View()
+        if thread:
+            join_view.add_item(discord.ui.Button(
+                label="👉 Bấm Vào Đây Để Mở Luồng Dán Ảnh Lỗi",
+                url=thread.jump_url,
+                style=discord.ButtonStyle.link
+            ))
+            url_text = f"👉 **[BẤM VÀO ĐÂY ĐỂ VÀO LUỒNG DÁN ẢNH CHỤP MÀN HÌNH]({thread.jump_url})**\n\n"
+        else:
+            url_text = ""
+
         await interaction.followup.send(
-
-
-
-            f"✅ **Đã gửi báo cáo lỗi thành công!**\n"
-
-
-
-            f"👉 Vui lòng vào luồng {thread_mention} để **dán ảnh chụp màn hình** nhé!",
-
-
-
+            f"✅ **Đã gửi báo cáo lỗi thành công!**\n\n"
+            f"{url_text}"
+            f"*(Vui lòng bấm nút link bên dưới để dán ảnh chụp màn hình lỗi cho Studio kiểm tra nhé!)*",
+            view=join_view if thread else None,
             ephemeral=True
-
-
-
         )
 
         # Báo ngay sang kênh #lệnh-quản-lý cho Admin
@@ -1441,16 +1442,20 @@ class InstallHelpRequestModal(discord.ui.Modal, title="🆘 NHỜ ADMIN TÌM GAM
 
 
 
+        join_view = discord.ui.View()
+        join_view.add_item(discord.ui.Button(
+            label="👉 Bấm Vào Đây Để Mở Phòng Chat Ngay",
+            url=thread.jump_url,
+            style=discord.ButtonStyle.link
+        ))
+
         await interaction.followup.send(
-
-            f"🎉 **Đã tạo phòng hỗ trợ trực tiếp 1:1 cùng Admin thành công!**\n"
-
-            f"👉 Bạn hãy bấm vào đây để vào phòng nói chuyện trực tiếp với Admin: {thread.mention}\n"
-
-            f"*(Chỉ có bạn và Admin mới nhìn thấy phòng này nha!)*",
-
+            f"🎉 **Đã tạo phòng hỗ trợ trực tiếp 1:1 cùng Admin thành công!**\n\n"
+            f"📌 **Tên phòng riêng:** `{thread.name}`\n"
+            f"👉 **[BẤM VÀO ĐÂY ĐỂ VÀO PHÒNG CHAT TRỰC TIẾP VỚI ADMIN]({thread.jump_url})**\n\n"
+            f"*(Bạn chỉ cần bấm nút bên dưới hoặc bấm vào link trên để vào thẳng phòng kín trò chuyện nha!)*",
+            view=join_view,
             ephemeral=True
-
         )
 
 
@@ -1901,26 +1906,20 @@ class FindGameRequestModal(discord.ui.Modal, title="🔍 NHỜ GẤU TÌM LINK G
 
 
 
+        join_view = discord.ui.View()
+        join_view.add_item(discord.ui.Button(
+            label="👉 Bấm Vào Đây Để Mở Phòng Tra Cứu Ngay",
+            url=thread.jump_url,
+            style=discord.ButtonStyle.link
+        ))
+
         await interaction.followup.send(
-
-
-
-            f"🎉 **Đã tạo phòng hỗ trợ riêng 1:1 cho bạn thành công!**\n"
-
-
-
-            f"👉 Bạn hãy bấm vào đây để vào phòng: {thread.mention}\n"
-
-
-
-            f"*(Chỉ có bạn và Ban Quản Trị mới nhìn thấy phòng này nha!)*",
-
-
-
+            f"🎉 **Đã tạo phòng hỗ trợ tìm link sạch 1:1 thành công!**\n\n"
+            f"📌 **Tên phòng riêng:** `{thread.name}`\n"
+            f"👉 **[BẤM VÀO ĐÂY ĐỂ VÀO PHÒNG TRA CỨU LINK SẠCH]({thread.jump_url})**\n\n"
+            f"*(Bạn chỉ cần bấm nút link bên dưới hoặc bấm vào link trên để vào thẳng phòng kín tra cứu nha!)*",
+            view=join_view,
             ephemeral=True
-
-
-
         )
 
 
