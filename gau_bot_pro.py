@@ -628,7 +628,16 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
 
 
 
+    ticket_cooldown = {}
+
     async def on_submit(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        now = time.time()
+        if user_id in ticket_cooldown and now - ticket_cooldown[user_id] < 120:
+            rem = int(120 - (now - ticket_cooldown[user_id]))
+            await interaction.response.send_message(f'⏳ Bạn vừa gửi yêu cầu rồi, vui lòng chờ {rem} giây nữa để tránh spam nhé!', ephemeral=True)
+            return
+        ticket_cooldown[user_id] = now
 
 
 
