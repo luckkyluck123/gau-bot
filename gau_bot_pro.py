@@ -2504,27 +2504,15 @@ async def ensure_guide_channel_banner(guild):
         pass
 
     desc = (
-        'Chào mừng anh em đến với **Studio Gấu Công Tâm**!
-
-'
-        'Nhằm bảo vệ an toàn máy tính tối đa và giúp anh em cài đặt game thành công 100%, Studio cung cấp kênh hỗ trợ **Trực Tiếp 1-1**:
-
-'
-        '🆘 **TẠO PHÒNG KÍN RIÊNG TƯ ĐỂ NÓI CHUYỆN TRỰC TIẾP VỚI ADMIN:**
-'
-        '• Bạn cần tìm nguồn game sạch, an toàn, không lo dính virus đào coin hay mã độc?
-'
-        '• Bạn không biết cách tải, cần Admin hỗ trợ trực tiếp?
-'
-        '• Cài game bị lỗi màn hình đen, văng game, thiếu file dll, Windows Defender nuốt file, hay kẹt mã PIN?
-
-'
-        '👉 **BẤM NÚT ĐỎ BÊN DƯỚI:**
-'
-        'Bot sẽ tự động mở ngay **1 Phòng Kín Riêng Tư (Private 1:1)** — **Bác Gấu (Admin)** sẽ trực tiếp vào nói chuyện, gửi nguồn game sạch và hướng dẫn tận tình cầm tay chỉ việc cho bạn!
-
-'
-        '🔒 *Phòng hỗ trợ là Private kín đáo (chỉ có bạn và Admin nhìn thấy), hai bên trao đổi thoải mái cho đến khi vào game thành công.*'
+        "Chào mừng anh em đến với **Studio Gấu Công Tâm**!\n\n"
+        "Nhằm bảo vệ an toàn máy tính tối đa và giúp anh em cài đặt game thành công 100%, Studio cung cấp kênh hỗ trợ **Trực Tiếp 1-1**:\n\n"
+        "🆘 **TẠO PHÒNG KÍN RIÊNG TƯ ĐỂ NÓI CHUYỆN TRỰC TIẾP VỚI ADMIN:**\n"
+        "• Bạn cần tìm nguồn game sạch, an toàn, không lo dính virus đào coin hay mã độc?\n"
+        "• Bạn không biết cách tải, cần Admin hỗ trợ trực tiếp?\n"
+        "• Cài game bị lỗi màn hình đen, văng game, thiếu file dll, Windows Defender nuốt file, hay kẹt mã PIN?\n\n"
+        "👉 **BẤM NÚT ĐỎ BÊN DƯỚI:**\n"
+        "Bot sẽ tự động mở ngay **1 Phòng Kín Riêng Tư (Private 1:1)** — **Bác Gấu (Admin)** sẽ trực tiếp vào nói chuyện, gửi nguồn game sạch và hướng dẫn tận tình cầm tay chỉ việc cho bạn!\n\n"
+        "🔒 *Phòng hỗ trợ là Private kín đáo (chỉ có bạn và Admin nhìn thấy), hai bên trao đổi thoải mái cho đến khi vào game thành công.*"
     )
     embed = discord.Embed(
         title='🎮 TRUNG TÂM TẠO PHÒNG RIÊNG HỖ TRỢ CÀI GAME — STUDIO GẤU CÔNG TÂM',
