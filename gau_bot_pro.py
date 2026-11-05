@@ -2592,7 +2592,7 @@ async def ensure_guide_channel_banner(guild):
 # ==================== PHÂN HỆ PHÁT NHẠC 24/7 (BÉ MIU TRỮ TÌNH) ====================
 VOICE_MUSIC_CH_NAME = "📻・Nghe Nhạc 24/7"
 LOCAL_MUSIC_DIR = r"E:\XUAT_TEXT_GAME\gau_music"
-FALLBACK_STREAM_URL = "https://streams.ilovemusic.de/iloveradio17.mp3"
+FALLBACK_STREAM_URL = "https://stream.radioparadise.com/mp3-128"
 
 current_music_idx = 0
 
@@ -2611,7 +2611,7 @@ def get_next_audio_source():
         raw_audio = discord.FFmpegPCMAudio(chosen)
         return discord.PCMVolumeTransformer(raw_audio, volume=1.0)
     else:
-        log_event("-> 🐻 Gấu Luckky kết nối đài phát thanh Lofi Chillout trực tuyến 24/7...")
+        log_event("-> 🐻 Gấu Luckky kết nối đài phát thanh Radio Paradise quốc tế 24/7...")
         ffmpeg_opts = {
             'before_options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': '-vn'
