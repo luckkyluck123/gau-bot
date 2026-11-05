@@ -1,4 +1,6 @@
 import discord
+import logging
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 import discord.player
 
 # Vá lỗi pipe buffer underflow trên Windows và Cloud: Đảm bảo luôn đọc đủ 3840 bytes FRAME_SIZE không bị ngắt giữa chừng
@@ -2489,98 +2491,55 @@ async def ensure_req_channel_banner(guild):
 
 
 async def ensure_guide_channel_banner(guild):
-
     guide_ch = guild.get_channel(GUIDE_CHANNEL_ID)
-
     if not guide_ch:
-
         return
-
     banner_msg = None
-
     try:
-
         async for m in guide_ch.history(limit=10):
-
-            if m.author == bot.user and m.embeds and any(k in (m.embeds[0].title or "") for k in ["HỖ TRỢ", "TÌM NGUỒN", "CÀI ĐẶT", "TRUNG TÂM"]):
-
+            if m.author == bot.user and m.embeds and any(k in (m.embeds[0].title or '') for k in ['HỖ TRỢ', 'TÌM NGUỒN', 'CÀI ĐẶT', 'TRUNG TÂM']):
                 banner_msg = m
-
                 break
-
     except:
-
         pass
 
-
-
     desc = (
+        'Chào mừng anh em đến với **Studio Gấu Công Tâm**!
 
-        "Chào mừng anh em đến với **Studio Gấu Công Tâm**! "
+'
+        'Nhằm bảo vệ an toàn máy tính tối đa và giúp anh em cài đặt game thành công 100%, Studio cung cấp kênh hỗ trợ **Trực Tiếp 1-1**:
 
-        "Để hỗ trợ anh em tìm game an toàn và cài đặt mượt mà nhất, hệ thống chia làm 2 hình thức hỗ trợ:\n\n"
+'
+        '🆘 **TẠO PHÒNG KÍN RIÊNG TƯ ĐỂ NÓI CHUYỆN TRỰC TIẾP VỚI ADMIN:**
+'
+        '• Bạn cần tìm nguồn game sạch, an toàn, không lo dính virus đào coin hay mã độc?
+'
+        '• Bạn không biết cách tải, cần Admin hỗ trợ trực tiếp?
+'
+        '• Cài game bị lỗi màn hình đen, văng game, thiếu file dll, Windows Defender nuốt file, hay kẹt mã PIN?
 
-        "🔴 **1. NHỜ ADMIN TÌM GAME & HƯỚNG DẪN CÀI ĐẶT (1-1 TRỰC TIẾP):**\n"
+'
+        '👉 **BẤM NÚT ĐỎ BÊN DƯỚI:**
+'
+        'Bot sẽ tự động mở ngay **1 Phòng Kín Riêng Tư (Private 1:1)** — **Bác Gấu (Admin)** sẽ trực tiếp vào nói chuyện, gửi nguồn game sạch và hướng dẫn tận tình cầm tay chỉ việc cho bạn!
 
-        "• Bạn muốn chơi tựa game nào mà chưa tìm thấy link tải sạch, sợ dính virus đào coin?\n"
-
-        "• Bạn không biết cách tải ở web nước ngoài, cần Admin gửi link Google Drive / Fshare?\n"
-
-        "• Cài game bị lỗi màn hình đen, văng game, thiếu dll, Antivirus nuốt file, kẹt mã PIN?\n"
-
-        "👉 **Bấm nút đỏ bên dưới:** Hệ thống sẽ mở ngay 1 phòng kín riêng để **Bác Gấu (Admin)** trực tiếp vào tìm link giúp bạn và hướng dẫn cài đặt tận tình cầm tay chỉ việc!\n\n"
-
-        "🟢 **2. NHỜ BOT TRA CỨU LINK GAME SẠCH (TỰ ĐỘNG TỨC THÌ):**\n"
-
-        "• Bạn chỉ cần tìm link tải sạch nhanh chóng để tự tải mà không cần phiền Admin?\n"
-
-        "• Bot sẽ quét và trả về ngay các nguồn game sạch uy tín nhất thế giới (SteamRIP, FitGirl, DODI, OvaGames) chỉ trong 1 giây!\n"
-
-        "👉 **Bấm nút xanh bên dưới:** Điền tên game để Bot gửi link tra cứu tự động cho bạn ngay lập tức.\n\n"
-
-        "🔒 *Mọi phòng hỗ trợ đều là Private Thread kín đáo (chỉ có bạn và Admin nhìn thấy), hai bên trao đổi thoải mái đến khi xong mới đóng.*"
-
+'
+        '🔒 *Phòng hỗ trợ là Private kín đáo (chỉ có bạn và Admin nhìn thấy), hai bên trao đổi thoải mái cho đến khi vào game thành công.*'
     )
-
     embed = discord.Embed(
-
-        title="🎮 TRUNG TÂM TÌM GAME & HỖ TRỢ CÀI ĐẶT — GẤU CÔNG TÂM",
-
+        title='🎮 TRUNG TÂM TẠO PHÒNG RIÊNG HỖ TRỢ CÀI GAME — STUDIO GẤU CÔNG TÂM',
         description=desc,
-
-        color=0xe67e22
-
+        color=0xe74c3c
     )
-
-    embed.set_footer(text="Studio Gấu Công Tâm • Hỗ trợ tận tâm 1-1 • An toàn 100%")
-
-
+    embed.set_footer(text='Bấm nút bên dưới để tạo phòng riêng và nói chuyện trực tiếp với Admin!')
 
     view = discord.ui.View(timeout=None)
-
     btn_install = discord.ui.Button(
-
-        label="🆘 Nhờ Admin Tìm Game & Hướng Dẫn Cài",
-
+        label='🆘 Nhấn Vào Đây Để Tạo Phòng Riêng (Nói Chuyện Trực Tiếp Với Admin)',
         style=discord.ButtonStyle.danger,
-
-        custom_id="btn_open_install_help_modal"
-
+        custom_id='btn_open_install_help_modal'
     )
-
-    btn_find = discord.ui.Button(
-
-        label="🤖 Nhờ Bot Tra Cứu Link Sạch",
-
-        style=discord.ButtonStyle.success,
-
-        custom_id="btn_open_find_game_modal"
-
-    )
-
     view.add_item(btn_install)
-
-    view.add_item(btn_find)
 
 
 
@@ -2623,11 +2582,11 @@ def get_next_audio_source():
     if local_tracks:
         chosen = local_tracks[current_music_idx % len(local_tracks)]
         current_music_idx += 1
-        log_event(f"-> 🌸 Bé Miu bắt đầu phát tuyển tập: {os.path.basename(chosen)}")
+        log_event(f"-> 🐻 Gấu Luckky bắt đầu phát tuyển tập: {os.path.basename(chosen)}")
         raw_audio = discord.FFmpegPCMAudio(chosen)
         return discord.PCMVolumeTransformer(raw_audio, volume=1.0)
     else:
-        log_event("-> 🌸 Bé Miu phát từ luồng trực tuyến Bolero 24/7...")
+        log_event("-> 🐻 Gấu Luckky phát từ luồng trực tuyến Bolero 24/7...")
         ffmpeg_opts = {
             'before_options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': '-vn'
@@ -2636,8 +2595,8 @@ def get_next_audio_source():
         return discord.PCMVolumeTransformer(raw_audio, volume=1.0)
 
 async def maintain_voice_music(guild):
-    """Bé Miu ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Trữ Tình Bolero du dương không bao giờ tắt"""
-    log_event("-> Đang khởi động tiến trình phát nhạc Trữ Tình 24/7 của Bé Miu...")
+    """Gấu Luckky ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Trữ Tình Bolero du dương không bao giờ tắt"""
+    log_event("-> Đang khởi động tiến trình phát nhạc Trữ Tình 24/7 của Gấu Luckky...")
     while True:
         try:
             # 1. Đảm bảo phòng voice tồn tại
@@ -2653,9 +2612,9 @@ async def maintain_voice_music(guild):
 
             # 2. Đổi nickname bot thành tên nữ dễ thương
             member = guild.get_member(bot.user.id)
-            if member and member.nick != "🌸 Bé Miu — Nhạc Trữ Tình 24/7":
+            if member and member.nick != "Gấu Luckky":
                 try:
-                    await member.edit(nick="🌸 Bé Miu — Nhạc Trữ Tình 24/7")
+                    await member.edit(nick="Gấu Luckky")
                 except:
                     pass
 
@@ -2673,19 +2632,19 @@ async def maintain_voice_music(guild):
 
             if vc is None:
                 vc = await voice_ch.connect(reconnect=True, timeout=30.0)
-                log_event(f"-> 🌸 Bé Miu đã vào phòng {VOICE_MUSIC_CH_NAME}!")
+                log_event(f"-> 🐻 Gấu Luckky đã vào phòng {VOICE_MUSIC_CH_NAME}!")
 
             # 4. Nếu chưa phát nhạc thì phát bài tiếp theo
             if not vc.is_playing():
                 def after_playing(err):
                     if err:
-                        log_event(f"🌸 Bé Miu voice error: {err}")
+                        log_event(f"🐻 Gấu Luckky voice error: {err}")
                     else:
-                        log_event("🌸 Bé Miu kết thúc bài, chuẩn bị phát bài tiếp theo.")
+                        log_event("🐻 Gấu Luckky kết thúc bài, chuẩn bị phát bài tiếp theo.")
                 
                 audio_source = get_next_audio_source()
                 vc.play(audio_source, after=after_playing)
-                log_event("-> 🌸 Bé Miu đang phát nhạc Trữ Tình Bolero 24/7 cực ngọt ngào...")
+                log_event("-> 🐻 Gấu Luckky đang phát nhạc Trữ Tình Bolero 24/7 cực ngọt ngào...")
 
         except Exception as e:
             log_event(f"Cảnh báo duy trì nhạc voice: {e}")
@@ -2795,8 +2754,9 @@ async def on_ready():
 
 
         await update_admin_dashboard(guild)
-        # Cloud chi chay quan tri, bao ve va slash commands; khong chay voice
-        log_event('-> Cloud Bot: Dang hoat dong o che do Quan Tri & Bao Ve 24/7.')
+        if not hasattr(bot, '_voice_music_started'):
+            bot._voice_music_started = True
+            asyncio.create_task(maintain_voice_music(guild))
 
 
 
