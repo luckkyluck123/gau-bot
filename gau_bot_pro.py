@@ -255,16 +255,44 @@ except Exception as e:
 # Nạp thư viện Opus để mã hóa và phát âm thanh Discord
 try:
     if not discord.opus.is_loaded():
-        opus_path = os.path.join(os.path.dirname(discord.__file__), 'bin', 'libopus-0.x64.dll')
-        if os.path.exists(opus_path):
-            discord.opus.load_opus(opus_path)
-            log_event(f"-> Đã nạp thành công Windows Opus DLL: {opus_path}")
+        if sys.platform == 'win32':
+            opus_path = os.path.join(os.path.dirname(discord.__file__), 'bin', 'libopus-0.x64.dll')
+            if os.path.exists(opus_path):
+                discord.opus.load_opus(opus_path)
+                log_event(f"-> Đã nạp thành công Windows Opus DLL: {opus_path}")
         else:
+            # Linux / Render
             import ctypes.util
-            opus_lib = ctypes.util.find_library('opus')
-            if opus_lib:
-                discord.opus.load_opus(opus_lib)
-                log_event(f"-> Đã nạp thành công Linux Opus: {opus_lib}")
+            candidates = [
+                'libopus.so.0',
+                'libopus.so',
+                '/usr/lib/x86_64-linux-gnu/libopus.so.0',
+                '/usr/lib/libopus.so.0',
+                '/usr/local/lib/libopus.so',
+                'opus'
+            ]
+            loaded = False
+            for cand in candidates:
+                try:
+                    discord.opus.load_opus(cand)
+                    log_event(f"-> Đã nạp thành công Linux Opus: {cand}")
+                    loaded = True
+                    break
+                except Exception:
+                    pass
+            if not loaded:
+                opus_lib = ctypes.util.find_library('opus')
+                if opus_lib:
+                    try:
+                        discord.opus.load_opus(opus_lib)
+                        log_event(f"-> Đã nạp thành công Linux Opus qua find_library: {opus_lib}")
+                        loaded = True
+                    except Exception as e_find:
+                        log_event(f"Lỗi nạp opus qua find_library: {e_find}")
+    if discord.opus.is_loaded():
+        log_event("✅ Thư viện Opus đã sẵn sàng giải mã âm thanh 100%!")
+    else:
+        log_event("⚠️ Cảnh báo: Opus chưa nạp được trên môi trường này.")
 except Exception as e:
     log_event(f"Cảnh báo nạp Opus: {e}")
 
