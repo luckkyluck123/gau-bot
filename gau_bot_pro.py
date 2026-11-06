@@ -3720,27 +3720,27 @@ async def on_message(message: discord.Message):
         unicode_emojis = re.findall(r'[𐀀-􏿿]', content)
         total_emojis = len(custom_emojis) + len(unicode_emojis)
 
-        # 3A. Nhồi quá nhiều emoji trong 1 tin (Emoji Flood >= 6 emoji hoặc tin nhắn chỉ toàn emoji dài)
+        # 3A. Nhồi quá nhiều emoji trong 1 tin (Emoji Flood >= 4 emoji hoặc tin nhắn chỉ toàn custom emoji >= 2)
         cleaned_no_spaces = content.strip().replace(' ', '').replace('\n', '')
         is_all_custom_emojis = bool(custom_emojis) and len(cleaned_no_spaces) == sum(len(e) for e in custom_emojis)
-        if total_emojis >= 6 or (total_emojis >= 3 and is_all_custom_emojis and len(custom_emojis) >= 4):
+        if total_emojis >= 4 or (total_emojis >= 2 and is_all_custom_emojis):
             is_spam = True
             spam_reason = f'Bão Emoji (nhồi {total_emojis} emoji trong 1 tin)'
 
-        # 3B. Spam tin nhắn / Emoji trùng lặp liên tiếp 3 lần trong 15s
-        elif len(user_data['recent_messages']) >= 3:
-            last_3 = user_data['recent_messages'][-3:]
-            if last_3[0][1] and last_3[0][1] == last_3[1][1] == last_3[2][1]:
+        # 3B. Spam tin nhắn / Emoji trùng lặp liên tiếp 2 lần trong 15s
+        elif len(user_data['recent_messages']) >= 2:
+            last_2 = user_data['recent_messages'][-2:]
+            if last_2[0][1] and last_2[0][1] == last_2[1][1]:
                 is_spam = True
-                spam_reason = 'Spam nội dung / emoji trùng lặp liên tiếp 3 lần'
+                spam_reason = 'Spam nội dung / emoji trùng lặp liên tiếp 2 lần'
 
-        # 3C. Tốc độ gửi tin nhắn quá nhanh (4 tin trong 5 giây HOẶC 6 tin trong 10 giây)
-        elif len([t for t in user_data['timestamps'] if now - t < 5.0]) >= 4:
+        # 3C. Tốc độ gửi tin nhắn quá nhanh (3 tin trong 5 giây HOẶC 5 tin trong 10 giây)
+        elif len([t for t in user_data['timestamps'] if now - t < 5.0]) >= 3:
             is_spam = True
-            spam_reason = 'Gửi tin nhắn quá nhanh (4 tin trong 5 giây)'
-        elif len(user_data['timestamps']) >= 6:
+            spam_reason = 'Gửi tin nhắn quá nhanh (3 tin trong 5 giây)'
+        elif len(user_data['timestamps']) >= 5:
             is_spam = True
-            spam_reason = 'Làm loãng kênh chat (6 tin trong 10 giây)'
+            spam_reason = 'Làm loãng kênh chat (5 tin trong 10 giây)'
 
         if is_spam:
             # 1. Thu thập ID các tin nhắn vi phạm gần đây của user để xóa sạch (Purge)
@@ -3748,12 +3748,18 @@ async def on_message(message: discord.Message):
             user_data['timestamps'] = []
             user_data['recent_messages'] = []
 
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
             for mid in to_delete_ids:
-                try:
-                    msg_obj = await message.channel.fetch_message(mid)
-                    await msg_obj.delete()
-                except Exception:
-                    pass
+                if mid != message.id:
+                    try:
+                        msg_obj = await message.channel.fetch_message(mid)
+                        await msg_obj.delete()
+                    except Exception:
+                        pass
 
             # 2. Phạt Timeout 5 phút
             try:
