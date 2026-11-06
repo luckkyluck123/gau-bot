@@ -3697,80 +3697,93 @@ async def on_message(message: discord.Message):
 
 
 
-    # 3. Chống spam chat
+    # 3. Chống spam chat đa tầng (Rate-limit, Duplicate Spam, Emoji Flood, Xóa sạch chuỗi spam & Timeout)
+    if not member.guild_permissions.administrator and not member.guild_permissions.manage_messages:
+        user_id = member.id
+        if user_id not in spam_tracker or isinstance(spam_tracker[user_id], list):
+            spam_tracker[user_id] = {
+                'timestamps': [],
+                'recent_messages': []
+            }
 
+        user_data = spam_tracker[user_id]
+        user_data['timestamps'] = [t for t in user_data['timestamps'] if now - t < 10.0]
+        user_data['timestamps'].append(now)
 
+        user_data['recent_messages'] = [(t, c, mid) for (t, c, mid) in user_data['recent_messages'] if now - t < 15.0]
+        user_data['recent_messages'].append((now, content.strip(), message.id))
 
-    user_id = member.id
+        is_spam = False
+        spam_reason = ''
 
+        custom_emojis = re.findall(r'<a?:\w+:\d+>', content)
+        unicode_emojis = re.findall(r'[𐀀-􏿿]', content)
+        total_emojis = len(custom_emojis) + len(unicode_emojis)
 
+        # 3A. Nhồi quá nhiều emoji trong 1 tin (Emoji Flood >= 6 emoji hoặc tin nhắn chỉ toàn emoji dài)
+        cleaned_no_spaces = content.strip().replace(' ', '').replace('\n', '')
+        is_all_custom_emojis = bool(custom_emojis) and len(cleaned_no_spaces) == sum(len(e) for e in custom_emojis)
+        if total_emojis >= 6 or (total_emojis >= 3 and is_all_custom_emojis and len(custom_emojis) >= 4):
+            is_spam = True
+            spam_reason = f'Bão Emoji (nhồi {total_emojis} emoji trong 1 tin)'
 
-    if user_id not in spam_tracker:
+        # 3B. Spam tin nhắn / Emoji trùng lặp liên tiếp 3 lần trong 15s
+        elif len(user_data['recent_messages']) >= 3:
+            last_3 = user_data['recent_messages'][-3:]
+            if last_3[0][1] and last_3[0][1] == last_3[1][1] == last_3[2][1]:
+                is_spam = True
+                spam_reason = 'Spam nội dung / emoji trùng lặp liên tiếp 3 lần'
 
+        # 3C. Tốc độ gửi tin nhắn quá nhanh (4 tin trong 5 giây HOẶC 6 tin trong 10 giây)
+        elif len([t for t in user_data['timestamps'] if now - t < 5.0]) >= 4:
+            is_spam = True
+            spam_reason = 'Gửi tin nhắn quá nhanh (4 tin trong 5 giây)'
+        elif len(user_data['timestamps']) >= 6:
+            is_spam = True
+            spam_reason = 'Làm loãng kênh chat (6 tin trong 10 giây)'
 
+        if is_spam:
+            # 1. Thu thập ID các tin nhắn vi phạm gần đây của user để xóa sạch (Purge)
+            to_delete_ids = [mid for (t, c, mid) in user_data['recent_messages']]
+            user_data['timestamps'] = []
+            user_data['recent_messages'] = []
 
-        spam_tracker[user_id] = []
+            for mid in to_delete_ids:
+                try:
+                    msg_obj = await message.channel.fetch_message(mid)
+                    await msg_obj.delete()
+                except Exception:
+                    pass
 
+            # 2. Phạt Timeout 5 phút
+            try:
+                await member.timeout(timedelta(minutes=5), reason=f'Chống Spam Tự Động: {spam_reason}')
+            except Exception as e:
+                log_event(f'Không thể timeout {member.name}: {e}')
 
+            # 3. Cảnh báo công khai đếm ngược 6 giây rồi tự hủy
+            try:
+                await message.channel.send(
+                    f'🛡️ **HỆ THỐNG AN NINH:** {member.mention} đã bị **tạm khóa chat 5 phút** do: **{spam_reason}**!\n-# *Vui lòng giữ gìn không gian chém gió văn minh, không spam emoji hoặc lặp tin nhắn.*',
+                    delete_after=6
+                )
+            except Exception:
+                pass
 
-
-
-
-
-    spam_tracker[user_id] = [t for t in spam_tracker[user_id] if now - t < 3.0]
-
-
-
-    spam_tracker[user_id].append(now)
-
-
-
-
-
-
-
-    if len(spam_tracker[user_id]) >= 5:
-
-
-
-        try:
-
-
-
-            await message.delete()
-
-
-
-        except:
-
-
-
-            pass
-
-
-
-        await message.channel.send(
-
-
-
-            f"⏳ {member.mention}, bạn đang nhắn quá nhanh! Vui lòng chờ vài giây để tránh làm loãng kênh chat nhé.",
-
-
-
-            delete_after=5
-
-
-
-        )
-
-
-
-        return
-
-
-
-
-
+            # 4. Ghi log vào kênh nhật ký hệ thống
+            log_ch = guild.get_channel(LOG_CH_ID)
+            if log_ch:
+                try:
+                    await log_ch.send(
+                        f'🚨 **CHẶN SPAM THÀNH CÔNG:**\n'
+                        f'👤 **Thành viên:** {member.name} ({member.id})\n'
+                        f'📍 **Kênh:** {message.channel.mention}\n'
+                        f'⚠️ **Hành vi:** {spam_reason}\n'
+                        f'⏱️ **Xử lý:** Đã xóa sạch tin rác và Timeout 5 phút.'
+                    )
+                except Exception:
+                    pass
+            return
 
 
     # 4. Trả lời khi được tag (@Gấu Công Tâm)
