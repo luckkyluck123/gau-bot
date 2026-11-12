@@ -2620,6 +2620,9 @@ def get_next_audio_source():
         return discord.PCMVolumeTransformer(raw_audio, volume=1.0)
 
 async def maintain_voice_music(guild):
+    # [TIẾT KIỆM 100% BĂNG THÔNG] Đã tắt phát nhạc voice theo yêu cầu của Bác Gấu để không ngốn 5GB Render
+    log_event("-> [TIẾT KIỆM BĂNG THÔNG] Tính năng phát nhạc voice 24/7 đã được vô hiệu hóa thành công!")
+    return
     """Gấu Luckky ngồi trong phòng 📻・Nghe Nhạc 24/7 phát nhạc Trữ Tình Bolero du dương không bao giờ tắt"""
     log_event("-> Đang khởi động tiến trình phát nhạc Trữ Tình 24/7 của Gấu Luckky...")
     while True:
@@ -2781,7 +2784,7 @@ async def on_ready():
         await update_admin_dashboard(guild)
         if not hasattr(bot, '_voice_music_started'):
             bot._voice_music_started = True
-            asyncio.create_task(maintain_voice_music(guild))
+            # asyncio.create_task(maintain_voice_music(guild)) # Đã tắt phát nhạc để giữ 0 MB băng thông audio
 
 
 
