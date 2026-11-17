@@ -177,6 +177,35 @@ GUIDE_CHANNEL_ID = 1566598834061320355
 
 ADMIN_CH_ID = 1564476312926556330 # lệnh-quản-lý
 
+SERVER_CONFIGS = {
+    1564454825708490867: {
+        "name": "Việt Hóa Gấu Công Tâm",
+        "bug_ch_id": BUG_CH_ID,
+        "req_ch_id": REQ_CH_ID,
+        "guide_ch_id": GUIDE_CHANNEL_ID,
+        "launcher_ch_id": GUIDE_CH_ID,
+        "forum_ch_id": GAME_FORUM_CH_ID,
+        "admin_ch_id": ADMIN_CH_ID,
+        "enable_guide_banner": True,
+        "enable_dashboard": True,
+    },
+    1560143301343060030: {
+        "name": "Hantunat VH (🖥️ GAME PC)",
+        "bug_ch_id": 1572078860013412422,
+        "req_ch_id": 1572078864627269712,
+        "guide_ch_id": 1572078846222667868,
+        "launcher_ch_id": 1572078837691584582,
+        "forum_ch_id": 1572078855483687005,
+        "admin_ch_id": None,
+        "enable_guide_banner": False,
+        "enable_dashboard": False,
+    },
+}
+
+
+def get_server_cfg(guild_id):
+    return SERVER_CONFIGS.get(guild_id, SERVER_CONFIGS[GUILD_ID])
+
 
 
 
@@ -558,9 +587,9 @@ FAQ_PATTERNS = [
 
 spam_tracker = {}
 
-
-
 faq_cooldown = {}
+
+ticket_cooldown = {}
 
 
 
@@ -656,8 +685,6 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
 
 
 
-    ticket_cooldown = {}
-
     async def on_submit(self, interaction: discord.Interaction):
         user_id = interaction.user.id
         now = time.time()
@@ -675,9 +702,9 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
 
         guild = interaction.guild
 
+        cfg = get_server_cfg(guild.id if guild else GUILD_ID)
 
-
-        bug_ch = guild.get_channel(BUG_CH_ID)
+        bug_ch = guild.get_channel(cfg["bug_ch_id"]) if guild else None
 
 
 
@@ -933,11 +960,13 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
 
 
 
-        # Cập nhật bảng gom lỗi của Admin
+        # Cập nhật bảng gom lỗi của Admin tại server chính
 
+        primary_guild = bot.get_guild(GUILD_ID)
 
+        if primary_guild:
 
-        await update_admin_dashboard(guild)
+            await update_admin_dashboard(primary_guild)
 
 
 
@@ -964,11 +993,13 @@ class BugReportModal(discord.ui.Modal, title="🚨 BÁO CÁO LỖI GAME VIỆT H
             ephemeral=True
         )
 
-        # Báo ngay sang kênh #lệnh-quản-lý cho Admin
-        admin_ch = guild.get_channel(ADMIN_CH_ID)
+        # Báo ngay sang kênh #lệnh-quản-lý cho Admin ở server chính
+        primary_guild = bot.get_guild(GUILD_ID)
+        admin_ch = primary_guild.get_channel(ADMIN_CH_ID) if primary_guild else None
         if admin_ch:
+            srv_tag = f" [{guild.name}]" if guild and guild.id != GUILD_ID else ""
             admin_embed = discord.Embed(
-                title=f"🚨 CÓ BÁO CÁO LỖI MỚI #{ticket_id}",
+                title=f"🚨 CÓ BÁO CÁO LỖI MỚI #{ticket_id}{srv_tag}",
                 description=(
                     f"👤 **Người báo:** {interaction.user.mention} (`{interaction.user.name}`)\n"
                     f"🎮 **Game:** **{self.game_name.value.strip()}**\n"
@@ -1091,9 +1122,9 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
 
         guild = interaction.guild
 
+        cfg = get_server_cfg(guild.id if guild else GUILD_ID)
 
-
-        req_ch = guild.get_channel(REQ_CH_ID)
+        req_ch = guild.get_channel(cfg["req_ch_id"]) if guild else None
 
 
 
@@ -1175,11 +1206,9 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
 
             "game": self.game_name.value.strip(),
 
-
+            "base_count": 0,
 
             "count": 1,
-
-
 
             "voters": [interaction.user.id]
 
@@ -1235,11 +1264,13 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
 
         await interaction.followup.send(f"🎉 Đã gửi đề xuất tựa game **{self.game_name.value.strip()}** lên kênh để anh em cùng vote!", ephemeral=True)
 
-        # Báo ngay sang kênh #lệnh-quản-lý cho Admin
-        admin_ch = guild.get_channel(ADMIN_CH_ID)
+        # Báo ngay sang kênh #lệnh-quản-lý cho Admin ở server chính
+        primary_guild = bot.get_guild(GUILD_ID)
+        admin_ch = primary_guild.get_channel(ADMIN_CH_ID) if primary_guild else None
         if admin_ch:
+            srv_tag = f" [{guild.name}]" if guild and guild.id != GUILD_ID else ""
             admin_embed = discord.Embed(
-                title=f"💡 CÓ ĐỀ XUẤT VIỆT HÓA MỚI: {self.game_name.value.strip()}",
+                title=f"💡 CÓ ĐỀ XUẤT VIỆT HÓA MỚI{srv_tag}: {self.game_name.value.strip()}",
                 description=(
                     f"👤 **Người đề xuất:** {interaction.user.mention} (`{interaction.user.name}`)\n"
                     f"🎮 **Game:** **{self.game_name.value.strip()}**\n"
@@ -2215,11 +2246,9 @@ async def update_admin_dashboard(guild):
 
 
 
-async def ensure_bug_channel_banner(guild):
+async def ensure_bug_channel_banner(guild, bug_ch_id=BUG_CH_ID):
 
-
-
-    bug_ch = guild.get_channel(BUG_CH_ID)
+    bug_ch = guild.get_channel(bug_ch_id)
 
 
 
@@ -2375,11 +2404,9 @@ async def ensure_bug_channel_banner(guild):
 
 
 
-async def ensure_req_channel_banner(guild):
+async def ensure_req_channel_banner(guild, req_ch_id=REQ_CH_ID):
 
-
-
-    req_ch = guild.get_channel(REQ_CH_ID)
+    req_ch = guild.get_channel(req_ch_id)
 
 
 
@@ -2715,21 +2742,21 @@ class GauClient(discord.Client):
 
     async def setup_hook(self):
 
+        for gid, scfg in SERVER_CONFIGS.items():
 
+            try:
 
-        guild = discord.Object(id=GUILD_ID)
+                g_obj = discord.Object(id=gid)
 
+                self.tree.copy_global_to(guild=g_obj)
 
+                await self.tree.sync(guild=g_obj)
 
-        self.tree.copy_global_to(guild=guild)
+                log_event(f"-> Đã đồng bộ Slash Commands vào {scfg['name']} ({gid})!")
 
+            except Exception as ex:
 
-
-        await self.tree.sync(guild=guild)
-
-
-
-        log_event("-> Đã đồng bộ toàn bộ Slash Commands vào Server!")
+                log_event(f"-> Cảnh báo sync Slash Commands {gid}: {ex}")
 
 
 
@@ -2761,28 +2788,37 @@ async def on_ready():
 
 
 
-    guild = bot.get_guild(GUILD_ID)
+    for gid, scfg in SERVER_CONFIGS.items():
 
+        g = bot.get_guild(gid)
 
+        if not g:
 
-    if guild:
+            continue
 
+        try:
 
+            if scfg.get("bug_ch_id"):
 
-        await ensure_bug_channel_banner(guild)
+                await ensure_bug_channel_banner(g, scfg["bug_ch_id"])
 
+            if scfg.get("req_ch_id"):
 
+                await ensure_req_channel_banner(g, scfg["req_ch_id"])
 
-        await ensure_req_channel_banner(guild)
+            if scfg.get("enable_guide_banner"):
 
+                await ensure_guide_channel_banner(g)
 
+            if scfg.get("enable_dashboard"):
 
-        await ensure_guide_channel_banner(guild)
+                await update_admin_dashboard(g)
 
+        except Exception as ex:
 
+            log_event(f"-> Cảnh báo khởi tạo banner tại {scfg['name']}: {ex}")
 
-        await update_admin_dashboard(guild)
-        if not hasattr(bot, '_voice_music_started'):
+    if not hasattr(bot, '_voice_music_started'):
             bot._voice_music_started = True
             # asyncio.create_task(maintain_voice_music(guild)) # Đã tắt phát nhạc để giữ 0 MB băng thông audio
 
@@ -3076,115 +3112,71 @@ async def on_interaction(interaction: discord.Interaction):
 
 
 
-            if vote_id in votes:
+            embed = interaction.message.embeds[0] if interaction.message.embeds else None
 
+            if vote_id not in votes:
 
+                prev_cnt = 1
 
-                voters = votes[vote_id].get('voters', [])
+                if embed:
 
+                    for field in embed.fields:
 
+                        if field.name == "🔥 Lượt Bình Chọn":
 
-                if interaction.user.id in voters:
+                            m_cnt = re.search(r'(\d+)', field.value or '')
 
+                            if m_cnt:
 
+                                prev_cnt = int(m_cnt.group(1))
 
-                    await interaction.response.send_message("❤️ Bạn đã bình chọn cho tựa game này rồi nha!", ephemeral=True)
+                            break
 
+                votes[vote_id] = {"game": (embed.title if embed else vote_id), "base_count": prev_cnt, "count": prev_cnt, "voters": []}
 
+            voters = votes[vote_id].get('voters', [])
 
-                    return
+            if interaction.user.id in voters:
 
+                await interaction.response.send_message("❤️ Bạn đã bình chọn cho tựa game này rồi nha!", ephemeral=True)
 
+                return
 
-                voters.append(interaction.user.id)
+            voters.append(interaction.user.id)
 
+            total_votes = votes[vote_id].get('base_count', 0) + len(voters)
 
+            votes[vote_id]['count'] = total_votes
 
-                votes[vote_id]['count'] = len(voters)
+            save_votes(votes)
 
-
-
-                save_votes(votes)
-
-
-
-
-
-
-
-                # Edit Embed
-
-
-
-                embed = interaction.message.embeds[0]
-
-
+            if embed:
 
                 for i, field in enumerate(embed.fields):
 
-
-
                     if field.name == "🔥 Lượt Bình Chọn":
 
-
-
-                        embed.set_field_at(i, name="🔥 Lượt Bình Chọn", value=f"⭐ **{len(voters)} Votes**", inline=False)
-
-
+                        embed.set_field_at(i, name="🔥 Lượt Bình Chọn", value=f"⭐ **{total_votes} Votes**", inline=False)
 
                         break
 
+            view = discord.ui.View(timeout=None)
 
+            btn = discord.ui.Button(
 
+                label=f"👍 Vote Thích Game Này ({total_votes})",
 
+                style=discord.ButtonStyle.primary,
 
+                custom_id=custom_id
 
+            )
 
-                view = discord.ui.View(timeout=None)
+            view.add_item(btn)
 
+            await interaction.response.edit_message(embed=embed, view=view)
 
-
-                btn = discord.ui.Button(
-
-
-
-                    label=f"👍 Vote Thích Game Này ({len(voters)})",
-
-
-
-                    style=discord.ButtonStyle.primary,
-
-
-
-                    custom_id=custom_id
-
-
-
-                )
-
-
-
-                view.add_item(btn)
-
-
-
-
-
-
-
-                await interaction.response.edit_message(embed=embed, view=view)
-
-
-
-                await interaction.followup.send("🎉 Cảm ơn bạn đã bình chọn cho tựa game này!", ephemeral=True)
-
-
-
-            else:
-
-
-
-                await interaction.response.send_message("❌ Dữ liệu bình chọn không tồn tại hoặc đã hết hạn!", ephemeral=True)
+            await interaction.followup.send("🎉 Cảm ơn bạn đã bình chọn cho tựa game này!", ephemeral=True)
 
 
 
@@ -3296,7 +3288,11 @@ async def on_interaction(interaction: discord.Interaction):
 
 
 
-            await update_admin_dashboard(interaction.guild)
+            primary_guild = bot.get_guild(GUILD_ID)
+
+            if primary_guild:
+
+                await update_admin_dashboard(primary_guild)
 
 
 
@@ -3951,11 +3947,11 @@ async def cmd_huongdan(interaction: discord.Interaction):
 
 
 
-    embed.add_field(name="1️⃣ Bước 1: Mở Launcher", value="Tải và mở **Gấu Cloud Launcher** tại kênh <#1566405530065305681>.", inline=False)
+    cfg = get_server_cfg(interaction.guild_id)
 
+    embed.add_field(name="1️⃣ Bước 1: Mở Launcher", value=f"Tải và mở **Gấu Cloud Launcher** tại kênh <#{cfg['launcher_ch_id']}>.", inline=False)
 
-
-    embed.add_field(name="2️⃣ Bước 2: Nhập Mã PIN 5 Số", value="Bấm **[CÀI ĐẶT VIỆT HÓA]** ➔ Nhập **Mã PIN 5 Số** của game đó (lấy trong bài viết tại <#1565547970487783475>).", inline=False)
+    embed.add_field(name="2️⃣ Bước 2: Nhập Mã PIN 5 Số", value=f"Bấm **[CÀI ĐẶT VIỆT HÓA]** ➔ Nhập **Mã PIN 5 Số** của game đó (lấy trong bài viết tại <#{cfg['forum_ch_id']}>).", inline=False)
 
 
 
@@ -3991,7 +3987,7 @@ async def cmd_khogame(interaction: discord.Interaction):
 
 
 
-        description="Toàn bộ các dự án Việt hóa đã phát hành đều được lưu trữ dạng bài viết chi tiết tại kênh Diễn Đàn:\n👉 <#1565547970487783475>",
+        description=f"Toàn bộ các dự án Việt hóa đã phát hành đều được lưu trữ dạng bài viết chi tiết tại kênh Diễn Đàn:\n👉 <#{get_server_cfg(interaction.guild_id)['forum_ch_id']}>",
 
 
 
@@ -4027,7 +4023,7 @@ async def cmd_baoloi(interaction: discord.Interaction):
 
 
 
-        description=f"Để Studio gom lỗi theo từng game và ra bản vá sửa nhanh nhất, bạn chỉ cần ghé kênh:\n👉 <#{BUG_CH_ID}>\nSau đó bấm nút đỏ **`[🚨 Gửi Báo Lỗi Game]`** và dán ảnh chụp màn hình vào nhé!",
+        description=f"Để Studio gom lỗi theo từng game và ra bản vá sửa nhanh nhất, bạn chỉ cần ghé kênh:\n👉 <#{get_server_cfg(interaction.guild_id)['bug_ch_id']}>\nSau đó bấm nút đỏ **`[🚨 Gửi Báo Lỗi Game]`** và dán ảnh chụp màn hình vào nhé!",
 
 
 
@@ -4048,10 +4044,13 @@ async def cmd_baoloi(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="danhsachloi", description="[Admin] Cập nhật và xem Bảng tổng hợp báo lỗi tất cả các game")
-
-
+@app_commands.default_permissions(manage_guild=True)
 
 async def cmd_danhsachloi(interaction: discord.Interaction):
+
+    if interaction.guild_id != GUILD_ID:
+        await interaction.response.send_message("🚫 Lệnh quản trị này chỉ dùng tại server chính Studio!", ephemeral=True)
+        return
 
 
 
@@ -4084,6 +4083,7 @@ async def cmd_danhsachloi(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="vinhdanh", description="Vinh danh Nhà Tài Trợ và tự động cấp Role VIP (Dành cho Admin)")
+@app_commands.default_permissions(manage_guild=True)
 
 
 
@@ -4111,9 +4111,11 @@ async def cmd_vinhdanh(interaction: discord.Interaction, user: discord.Member, a
 
 
 
+    if interaction.guild_id != GUILD_ID:
+        await interaction.response.send_message("🚫 Lệnh này chỉ dùng tại server chính Studio!", ephemeral=True)
+        return
+
     if not interaction.user.guild_permissions.manage_roles:
-
-
 
         await interaction.response.send_message("🚫 Chỉ Ban Quản Trị mới có quyền dùng lệnh vinh danh!", ephemeral=True)
 
