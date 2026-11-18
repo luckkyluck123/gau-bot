@@ -1260,9 +1260,34 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
 
         req_msg = await req_ch.send(embed=embed, view=view)
 
+        thread_title = f"💬 Thảo luận: {self.game_name.value.strip()}"[:100]
+        req_thread = None
+        for arch_min in (10080, 4320, 1440):
+            try:
+                req_thread = await req_msg.create_thread(
+                    name=thread_title,
+                    auto_archive_duration=arch_min
+                )
+                break
+            except Exception as tex:
+                if arch_min == 1440:
+                    log_event(f"Lỗi tạo thread đề xuất game: {tex}")
+        if req_thread:
+            try:
+                await req_thread.send(
+                    f"💬 **Khu vực bình luận cho tựa game: {self.game_name.value.strip()}**\n"
+                    f"👉 Mời {interaction.user.mention} và anh em cùng bình luận, bổ sung link hoặc đánh giá về game này ngay tại đây nhé!"
+                )
+                view.add_item(discord.ui.Button(
+                    label="💬 Bình luận",
+                    style=discord.ButtonStyle.link,
+                    url=req_thread.jump_url
+                ))
+                await req_msg.edit(view=view)
+            except Exception as tex:
+                log_event(f"Lỗi gắn nút thread đề xuất game: {tex}")
 
-
-        await interaction.followup.send(f"🎉 Đã gửi đề xuất tựa game **{self.game_name.value.strip()}** lên kênh để anh em cùng vote!", ephemeral=True)
+        await interaction.followup.send(f"🎉 Đã gửi đề xuất tựa game **{self.game_name.value.strip()}** lên kênh kèm khung bình luận riêng để anh em cùng vote & thảo luận!", ephemeral=True)
 
         # Báo ngay sang kênh #lệnh-quản-lý cho Admin ở server chính
         primary_guild = bot.get_guild(GUILD_ID)
@@ -2459,49 +2484,17 @@ async def ensure_req_channel_banner(guild, req_ch_id=REQ_CH_ID):
 
 
         embed = discord.Embed(
-
-
-
             title="💡 HÒM PHIẾU ĐỀ XUẤT GAME VIỆT HÓA — GẤU CÔNG TÂM",
-
-
-
             description=(
-
-
-
                 "Anh em đang mong muốn Studio Việt hóa tựa game nào tiếp theo? "
-
-
-
                 "Hãy bấm nút xanh bên dưới để gửi đề xuất nhé!\n\n"
-
-
-
-                "📌 **CÁCH THỨC BÌNH CHỌN:**\n"
-
-
-
+                "📌 **CÁCH THỨC BÌNH CHỌN & THẢO LUẬN:**\n"
                 "1️⃣ Bấm nút **`[💡 Gửi Đề Xuất Game Mới]`** bên dưới.\n"
-
-
-
                 "2️⃣ Điền: **Tên game**, **Link Steam / Thể loại**, và **Lý do đề xuất**.\n"
-
-
-
-                "3️⃣ Cả cộng đồng sẽ cùng thả tim **`[👍 Vote Thích Game Này]`**. Tựa game nào được nhiều anh em yêu thích nhất, Studio sẽ ưu tiên lên kế hoạch xúc tiến dịch sớm!"
-
-
-
+                "3️⃣ Cả cộng đồng sẽ cùng thả tim **`[👍 Vote Thích Game Này]`**. Tựa game nào được nhiều anh em yêu thích nhất, Studio sẽ ưu tiên lên kế hoạch xúc tiến dịch sớm!\n"
+                "4️⃣ Bấm nút **`[💬 Bình luận]`** (hoặc thanh **Thảo luận**) dưới mỗi thẻ để góp ý và trò chuyện riêng về tựa game đó!"
             ),
-
-
-
             color=0x3498db
-
-
-
         )
 
 
@@ -3161,18 +3154,31 @@ async def on_interaction(interaction: discord.Interaction):
                         break
 
             view = discord.ui.View(timeout=None)
-
             btn = discord.ui.Button(
-
                 label=f"👍 Vote Thích Game Này ({total_votes})",
-
                 style=discord.ButtonStyle.primary,
-
                 custom_id=custom_id
-
             )
-
             view.add_item(btn)
+
+            comment_url = None
+            msg_thread = getattr(interaction.message, "thread", None)
+            if msg_thread:
+                comment_url = msg_thread.jump_url
+            elif interaction.message and interaction.message.components:
+                for row in interaction.message.components:
+                    for child in getattr(row, "children", []):
+                        if getattr(child, "url", None):
+                            comment_url = child.url
+                            break
+                    if comment_url:
+                        break
+            if comment_url:
+                view.add_item(discord.ui.Button(
+                    label="💬 Bình luận",
+                    style=discord.ButtonStyle.link,
+                    url=comment_url
+                ))
 
             await interaction.response.edit_message(embed=embed, view=view)
 
