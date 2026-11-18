@@ -442,10 +442,331 @@ def save_votes(votes):
 
 
     except Exception as e:
-
-
-
         log_event(f"Lỗi lưu votes: {e}")
+
+
+def _is_studio_admin(member) -> bool:
+    if not member:
+        return False
+    perms = getattr(member, "guild_permissions", None)
+    if perms and (perms.manage_channels or perms.administrator):
+        return True
+    return any(getattr(r, "id", 0) == ROLE_ADMIN_ID for r in getattr(member, "roles", []))
+
+
+def _norm_game_match_text(text: str) -> str:
+    cleaned = re.sub(r"[^0-9a-zA-ZÀ-ỹ]+", " ", str(text or "")).strip().lower()
+    return re.sub(r"\s+", " ", cleaned)
+
+
+async def _find_forum_thread_url(guild, forum_ch_id, game_title: str):
+    if not guild or not forum_ch_id or not game_title:
+        return None
+    target_norm = _norm_game_match_text(game_title)
+    if len(target_norm) < 3:
+        return None
+    pat = re.compile(rf"(?:^|\s){re.escape(target_norm)}(?:\s|$)")
+
+    candidates = [
+        t for t in getattr(guild, "threads", [])
+        if getattr(t, "parent_id", None) == forum_ch_id
+    ]
+    forum_ch = guild.get_channel(forum_ch_id)
+    if forum_ch and hasattr(forum_ch, "archived_threads"):
+        try:
+            async for t in forum_ch.archived_threads(limit=30):
+                candidates.append(t)
+        except Exception:
+            pass
+
+    for t in candidates:
+        t_norm = _norm_game_match_text(getattr(t, "name", ""))
+        if pat.search(t_norm):
+            return t.jump_url
+    return None
+
+
+def _extract_req_card_info(embed, components, thread=None, fallback_vote_id: str = None):
+    vote_id = fallback_vote_id
+    total_votes = 1
+    comment_url = getattr(thread, "jump_url", None) if thread else None
+    game_post_url = None
+    has_progress_buttons = False
+
+    if components:
+        for row in components:
+            for child in getattr(row, "children", []):
+                cid = getattr(child, "custom_id", "") or ""
+                lbl = getattr(child, "label", "") or ""
+                url = getattr(child, "url", None)
+                if cid.startswith("btn_vote_"):
+                    if not vote_id:
+                        vote_id = cid.replace("btn_vote_", "", 1)
+                    m_lbl = re.search(r"\((\d+)\)", lbl)
+                    if m_lbl:
+                        total_votes = int(m_lbl.group(1))
+                elif cid.startswith(("btn_req_wip_", "btn_req_done_", "btn_req_reopen_")):
+                    has_progress_buttons = True
+                    if not vote_id:
+                        vote_id = re.sub(r"^btn_req_(?:wip|done|reopen)_", "", cid)
+                elif url:
+                    if "/channels/" in url and ("Tải Game" in lbl or "Kho Game" in lbl):
+                        game_post_url = url
+                    elif not comment_url:
+                        comment_url = url
+
+    title_raw = (embed.title if embed and embed.title else "") or ""
+    game_title = re.sub(
+        r"^(?:💡\s*ĐỀ XUẤT GAME MỚI|🛠️\s*ĐANG VIỆT HÓA|✅\s*ĐÃ HOÀN THÀNH)\s*:\s*",
+        "",
+        title_raw,
+        flags=re.IGNORECASE,
+    ).strip()
+    requester_mention = ""
+    status = "open"
+    if title_raw.startswith("✅") or (embed and embed.color and embed.color.value == 0x2ECC71):
+        status = "done"
+    elif title_raw.startswith("🛠️") or (embed and embed.color and embed.color.value == 0xF1C40F):
+        status = "wip"
+
+    if embed:
+        for field in embed.fields:
+            fname = field.name or ""
+            fval = field.value or ""
+            if fname == "🎮 Tựa Game" and fval.strip():
+                game_title = fval.strip().strip("*").strip()
+            elif fname == "👤 Người Đề Xuất":
+                requester_mention = fval.strip()
+            elif fname == "🔥 Lượt Bình Chọn":
+                m_cnt = re.search(r"(\d+)", fval)
+                if m_cnt:
+                    total_votes = int(m_cnt.group(1))
+            elif fname == "📊 Tiến Độ":
+                if "HOÀN THÀNH" in fval.upper() or "🟢" in fval:
+                    status = "done"
+                elif "ĐANG" in fval.upper() or "🟡" in fval:
+                    status = "wip"
+                if not game_post_url:
+                    m_url = re.search(r"https://discord\.com/channels/\d+/\d+", fval)
+                    if m_url:
+                        game_post_url = m_url.group(0)
+
+    return {
+        "vote_id": vote_id,
+        "game_title": game_title or "Tựa Game",
+        "requester_mention": requester_mention,
+        "total_votes": total_votes,
+        "status": status,
+        "comment_url": comment_url,
+        "game_post_url": game_post_url,
+        "has_progress_buttons": has_progress_buttons,
+    }
+
+
+def build_request_card_view(
+    vote_id: str,
+    total_votes: int,
+    comment_url: str = None,
+    status: str = "open",
+    game_post_url: str = None,
+) -> discord.ui.View:
+    view = discord.ui.View(timeout=None)
+    view.add_item(discord.ui.Button(
+        label=f"👍 Vote Thích Game Này ({total_votes})",
+        style=discord.ButtonStyle.primary,
+        custom_id=f"btn_vote_{vote_id}",
+        disabled=(status == "done"),
+        row=0,
+    ))
+    if comment_url:
+        view.add_item(discord.ui.Button(
+            label="💬 Bình luận",
+            style=discord.ButtonStyle.link,
+            url=comment_url,
+            row=0,
+        ))
+    if status == "done" and game_post_url:
+        view.add_item(discord.ui.Button(
+            label="🎮 Tải Game Ngay",
+            style=discord.ButtonStyle.link,
+            url=game_post_url,
+            row=0,
+        ))
+
+    if status == "wip":
+        view.add_item(discord.ui.Button(
+            label="🛠️ Đang Việt Hóa",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"btn_req_wip_{vote_id}",
+            disabled=True,
+            row=1,
+        ))
+        view.add_item(discord.ui.Button(
+            label="✅ Hoàn Thành (Admin)",
+            style=discord.ButtonStyle.success,
+            custom_id=f"btn_req_done_{vote_id}",
+            row=1,
+        ))
+        view.add_item(discord.ui.Button(
+            label="🔄 Mở Lại",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"btn_req_reopen_{vote_id}",
+            row=1,
+        ))
+    elif status == "done":
+        view.add_item(discord.ui.Button(
+            label="🟢 Đã Hoàn Thành",
+            style=discord.ButtonStyle.success,
+            custom_id=f"btn_req_done_{vote_id}",
+            disabled=True,
+            row=1,
+        ))
+        view.add_item(discord.ui.Button(
+            label="🔄 Mở Lại (Admin)",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"btn_req_reopen_{vote_id}",
+            row=1,
+        ))
+    else:
+        view.add_item(discord.ui.Button(
+            label="🛠️ Đang Làm (Admin)",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"btn_req_wip_{vote_id}",
+            row=1,
+        ))
+        view.add_item(discord.ui.Button(
+            label="✅ Hoàn Thành (Admin)",
+            style=discord.ButtonStyle.success,
+            custom_id=f"btn_req_done_{vote_id}",
+            row=1,
+        ))
+    return view
+
+
+def apply_request_status_to_embed(
+    embed: discord.Embed,
+    game_title: str,
+    status: str,
+    actor_mention: str = None,
+    game_post_url: str = None,
+):
+    if status == "done":
+        embed.title = f"✅ ĐÃ HOÀN THÀNH: {game_title}"[:256]
+        embed.color = 0x2ECC71
+        status_text = "🟢 **ĐÃ HOÀN THÀNH VIỆT HÓA & LÊN GẤU CLOUD LAUNCHER!**"
+        if game_post_url:
+            status_text += f"\n👉 **[Bấm vào đây để xem bài viết & lấy Mã PIN tải game]({game_post_url})**"
+    elif status == "wip":
+        embed.title = f"🛠️ ĐANG VIỆT HÓA: {game_title}"[:256]
+        embed.color = 0xF1C40F
+        by_txt = f" *(Cập nhật bởi {actor_mention})*" if actor_mention else ""
+        status_text = f"🟡 **STUDIO GẤU ĐANG TIẾN HÀNH VIỆT HÓA**{by_txt}"
+    else:
+        embed.title = f"💡 ĐỀ XUẤT GAME MỚI: {game_title}"[:256]
+        embed.color = 0x3498DB
+        status_text = "🔵 **Đang mở bình chọn**"
+
+    idx_status = next((i for i, f in enumerate(embed.fields) if f.name == "📊 Tiến Độ"), None)
+    if idx_status is not None:
+        embed.set_field_at(idx_status, name="📊 Tiến Độ", value=status_text, inline=False)
+    else:
+        embed.add_field(name="📊 Tiến Độ", value=status_text, inline=False)
+
+
+async def _notify_req_thread_status(msg, game_title: str, requester_mention: str, status: str, game_post_url: str = None, comment_url: str = None):
+    if status not in ("wip", "done"):
+        return
+    req_thread = getattr(msg, "thread", None)
+    if not req_thread and comment_url and msg and getattr(msg, "guild", None):
+        m_tid = re.search(r"/channels/\d+/(\d+)", comment_url)
+        if m_tid:
+            tid = int(m_tid.group(1))
+            req_thread = msg.guild.get_thread(tid)
+            if not req_thread:
+                try:
+                    req_thread = await msg.guild.fetch_channel(tid)
+                except Exception:
+                    req_thread = None
+    if not req_thread:
+        return
+    try:
+        if getattr(req_thread, "archived", False):
+            await req_thread.edit(archived=False)
+        who = requester_mention or "anh em"
+        if status == "wip":
+            note = (
+                f"🛠️ **TIN VUI!** {who} ơi, Ban Quản Trị đã tiếp nhận và đang tiến hành Việt hóa "
+                f"tựa game **{game_title}** rồi nhé! Anh em cùng hóng ngày ra lò nha!"
+            )
+        else:
+            note = (
+                f"🎉 **ĐÃ HOÀN THÀNH VIỆT HÓA!** {who} ơi, tựa game **{game_title}** bạn đề xuất "
+                f"đã chính thức hoàn thành 100% và có mặt trên **Gấu Cloud Launcher** rồi đấy!"
+            )
+            if game_post_url:
+                note += f"\n👉 **Vào lấy Mã PIN & tải chơi ngay tại đây:** {game_post_url}"
+        await req_thread.send(note)
+    except Exception as ex:
+        log_event(f"Cảnh báo gửi thông báo vào thread đề xuất ({game_title}): {ex}")
+
+
+async def _sync_existing_request_cards(guild, req_ch, forum_ch_id):
+    synced = 0
+    try:
+        async for m in req_ch.history(limit=40):
+            if m.author != bot.user or not m.embeds:
+                continue
+            emb = m.embeds[0]
+            title_txt = emb.title or ""
+            if "HÒM PHIẾU ĐỀ XUẤT" in title_txt:
+                continue
+            if not any(k in title_txt for k in ("ĐỀ XUẤT GAME MỚI", "ĐANG VIỆT HÓA", "ĐÃ HOÀN THÀNH")):
+                continue
+            info = _extract_req_card_info(emb, m.components, getattr(m, "thread", None))
+            if not info["vote_id"]:
+                continue
+
+            target_status = info["status"]
+            game_post_url = info["game_post_url"]
+            auto_completed = False
+            if target_status != "done" and forum_ch_id:
+                found_url = await _find_forum_thread_url(guild, forum_ch_id, info["game_title"])
+                if found_url:
+                    target_status = "done"
+                    game_post_url = found_url
+                    auto_completed = True
+
+            has_status_field = any(f.name == "📊 Tiến Độ" for f in emb.fields)
+            if not info["has_progress_buttons"] or not has_status_field or auto_completed:
+                apply_request_status_to_embed(
+                    emb,
+                    info["game_title"],
+                    target_status,
+                    game_post_url=game_post_url,
+                )
+                new_view = build_request_card_view(
+                    info["vote_id"],
+                    info["total_votes"],
+                    comment_url=info["comment_url"],
+                    status=target_status,
+                    game_post_url=game_post_url,
+                )
+                await m.edit(embed=emb, view=new_view)
+                if auto_completed:
+                    await _notify_req_thread_status(
+                        m,
+                        info["game_title"],
+                        info["requester_mention"],
+                        "done",
+                        game_post_url=game_post_url,
+                        comment_url=info["comment_url"],
+                    )
+                synced += 1
+                await asyncio.sleep(0.5)
+        if synced:
+            log_event(f"-> Đã nâng cấp nút Tiến Độ cho {synced} thẻ đề xuất cũ tại #{req_ch.name}")
+    except Exception as ex:
+        log_event(f"Cảnh báo đồng bộ thẻ đề xuất cũ ({req_ch.name}): {ex}")
 
 
 
@@ -1181,82 +1502,21 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
 
 
         embed.add_field(name="🔥 Lượt Bình Chọn", value="⭐ **1 Vote**", inline=False)
-
-
-
+        embed.add_field(name="📊 Tiến Độ", value="🔵 **Đang mở bình chọn**", inline=False)
         embed.set_footer(text=f"Bình chọn • {datetime.now(VN_TZ).strftime('%d/%m/%Y')}")
 
-
-
-
-
-
-
         vote_id = f"req_{int(time.time())}"
-
-
-
         votes = load_votes()
-
-
-
         votes[vote_id] = {
-
-
-
             "game": self.game_name.value.strip(),
-
             "base_count": 0,
-
             "count": 1,
-
-            "voters": [interaction.user.id]
-
-
-
+            "voters": [interaction.user.id],
+            "status": "open",
         }
-
-
-
         save_votes(votes)
 
-
-
-
-
-
-
-        view = discord.ui.View(timeout=None)
-
-
-
-        btn_vote = discord.ui.Button(
-
-
-
-            label="👍 Vote Thích Game Này (1)",
-
-
-
-            style=discord.ButtonStyle.primary,
-
-
-
-            custom_id=f"btn_vote_{vote_id}"
-
-
-
-        )
-
-
-
-        view.add_item(btn_vote)
-
-
-
-
-
-
+        view = build_request_card_view(vote_id, 1, comment_url=None, status="open")
 
         req_msg = await req_ch.send(embed=embed, view=view)
 
@@ -1278,11 +1538,7 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
                     f"💬 **Khu vực bình luận cho tựa game: {self.game_name.value.strip()}**\n"
                     f"👉 Mời {interaction.user.mention} và anh em cùng bình luận, bổ sung link hoặc đánh giá về game này ngay tại đây nhé!"
                 )
-                view.add_item(discord.ui.Button(
-                    label="💬 Bình luận",
-                    style=discord.ButtonStyle.link,
-                    url=req_thread.jump_url
-                ))
+                view = build_request_card_view(vote_id, 1, comment_url=req_thread.jump_url, status="open")
                 await req_msg.edit(view=view)
             except Exception as tex:
                 log_event(f"Lỗi gắn nút thread đề xuất game: {tex}")
@@ -2533,9 +2789,10 @@ async def ensure_req_channel_banner(guild, req_ch_id=REQ_CH_ID):
 
         await req_ch.send(embed=embed, view=view)
 
-
-
         log_event("-> Đã gắn Bảng Nút Đề Xuất vào kênh #💡・yêu-cầu-việt-hóa")
+
+    cfg = get_server_cfg(guild.id if guild else GUILD_ID)
+    await _sync_existing_request_cards(guild, req_ch, cfg.get("forum_ch_id"))
 
 
 
@@ -3094,98 +3351,131 @@ async def on_interaction(interaction: discord.Interaction):
 
 
         if custom_id.startswith('btn_vote_'):
-
-
-
             vote_id = custom_id.replace('btn_vote_', '')
-
-
-
             votes = load_votes()
-
-
-
             embed = interaction.message.embeds[0] if interaction.message.embeds else None
+            info = _extract_req_card_info(
+                embed,
+                interaction.message.components if interaction.message else None,
+                getattr(interaction.message, "thread", None),
+                fallback_vote_id=vote_id,
+            )
+            if info["status"] == "done":
+                await interaction.response.send_message(
+                    "✅ Tựa game này đã được Studio Gấu Việt hóa hoàn thành rồi nhé! Anh em bấm nút **🎮 Tải Game Ngay** để chiến luôn nha!",
+                    ephemeral=True,
+                )
+                return
 
             if vote_id not in votes:
-
-                prev_cnt = 1
-
-                if embed:
-
-                    for field in embed.fields:
-
-                        if field.name == "🔥 Lượt Bình Chọn":
-
-                            m_cnt = re.search(r'(\d+)', field.value or '')
-
-                            if m_cnt:
-
-                                prev_cnt = int(m_cnt.group(1))
-
-                            break
-
-                votes[vote_id] = {"game": (embed.title if embed else vote_id), "base_count": prev_cnt, "count": prev_cnt, "voters": []}
+                votes[vote_id] = {
+                    "game": info["game_title"],
+                    "base_count": info["total_votes"],
+                    "count": info["total_votes"],
+                    "voters": [],
+                    "status": info["status"],
+                }
 
             voters = votes[vote_id].get('voters', [])
-
             if interaction.user.id in voters:
-
                 await interaction.response.send_message("❤️ Bạn đã bình chọn cho tựa game này rồi nha!", ephemeral=True)
-
                 return
 
             voters.append(interaction.user.id)
-
             total_votes = votes[vote_id].get('base_count', 0) + len(voters)
-
             votes[vote_id]['count'] = total_votes
-
             save_votes(votes)
 
             if embed:
-
                 for i, field in enumerate(embed.fields):
-
                     if field.name == "🔥 Lượt Bình Chọn":
-
                         embed.set_field_at(i, name="🔥 Lượt Bình Chọn", value=f"⭐ **{total_votes} Votes**", inline=False)
-
                         break
 
-            view = discord.ui.View(timeout=None)
-            btn = discord.ui.Button(
-                label=f"👍 Vote Thích Game Này ({total_votes})",
-                style=discord.ButtonStyle.primary,
-                custom_id=custom_id
+            view = build_request_card_view(
+                vote_id,
+                total_votes,
+                comment_url=info["comment_url"],
+                status=info["status"],
+                game_post_url=info["game_post_url"],
             )
-            view.add_item(btn)
-
-            comment_url = None
-            msg_thread = getattr(interaction.message, "thread", None)
-            if msg_thread:
-                comment_url = msg_thread.jump_url
-            elif interaction.message and interaction.message.components:
-                for row in interaction.message.components:
-                    for child in getattr(row, "children", []):
-                        if getattr(child, "url", None):
-                            comment_url = child.url
-                            break
-                    if comment_url:
-                        break
-            if comment_url:
-                view.add_item(discord.ui.Button(
-                    label="💬 Bình luận",
-                    style=discord.ButtonStyle.link,
-                    url=comment_url
-                ))
-
             await interaction.response.edit_message(embed=embed, view=view)
-
             await interaction.followup.send("🎉 Cảm ơn bạn đã bình chọn cho tựa game này!", ephemeral=True)
+            return
 
+        if custom_id.startswith(('btn_req_wip_', 'btn_req_done_', 'btn_req_reopen_')):
+            if not _is_studio_admin(interaction.user):
+                await interaction.response.send_message("🚫 Chỉ Ban Quản Trị Studio mới có quyền cập nhật tiến độ Việt hóa!", ephemeral=True)
+                return
 
+            await interaction.response.defer(ephemeral=True)
+            if custom_id.startswith('btn_req_wip_'):
+                vote_id = custom_id.replace('btn_req_wip_', '', 1)
+                new_status = 'wip'
+            elif custom_id.startswith('btn_req_done_'):
+                vote_id = custom_id.replace('btn_req_done_', '', 1)
+                new_status = 'done'
+            else:
+                vote_id = custom_id.replace('btn_req_reopen_', '', 1)
+                new_status = 'open'
 
+            embed = interaction.message.embeds[0] if interaction.message.embeds else None
+            info = _extract_req_card_info(
+                embed,
+                interaction.message.components if interaction.message else None,
+                getattr(interaction.message, "thread", None),
+                fallback_vote_id=vote_id,
+            )
+            guild = interaction.guild
+            cfg = get_server_cfg(guild.id if guild else GUILD_ID)
+            game_post_url = info["game_post_url"]
+            if new_status == 'done' and not game_post_url:
+                game_post_url = await _find_forum_thread_url(guild, cfg.get("forum_ch_id"), info["game_title"])
+            elif new_status == 'open':
+                game_post_url = None
+
+            votes = load_votes()
+            if vote_id not in votes:
+                votes[vote_id] = {
+                    "game": info["game_title"],
+                    "base_count": info["total_votes"],
+                    "count": info["total_votes"],
+                    "voters": [],
+                }
+            votes[vote_id]["status"] = new_status
+            if game_post_url:
+                votes[vote_id]["game_post_url"] = game_post_url
+            save_votes(votes)
+
+            if embed:
+                apply_request_status_to_embed(
+                    embed,
+                    info["game_title"],
+                    new_status,
+                    actor_mention=interaction.user.mention,
+                    game_post_url=game_post_url,
+                )
+
+            new_view = build_request_card_view(
+                vote_id,
+                info["total_votes"],
+                comment_url=info["comment_url"],
+                status=new_status,
+                game_post_url=game_post_url,
+            )
+            await interaction.message.edit(embed=embed, view=new_view)
+            if new_status in ('wip', 'done') and info["status"] != new_status:
+                await _notify_req_thread_status(
+                    interaction.message,
+                    info["game_title"],
+                    info["requester_mention"],
+                    new_status,
+                    game_post_url=game_post_url,
+                    comment_url=info["comment_url"],
+                )
+
+            status_lbl = {"wip": "🛠️ Đang Việt Hóa", "done": "✅ Đã Hoàn Thành", "open": "💡 Mở Lại Bình Chọn"}[new_status]
+            await interaction.followup.send(f"Đã cập nhật **{info['game_title']}** ➔ **{status_lbl}**!", ephemeral=True)
             return
 
 
