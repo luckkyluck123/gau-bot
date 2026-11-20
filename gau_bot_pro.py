@@ -811,11 +811,15 @@ FAQ_PATTERNS = [
 
 
 
-        "regex": re.compile(r'(mã pin|ma pin|mật khẩu|mat khau|mã 5 số|ma 5 so|pass cài|pass game)', re.IGNORECASE),
+        "regex": re.compile(r'(mã pin|ma pin|mật khẩu|mat khau|mã 5 số|ma 5 so|pass cài|pass game|không thấy mã|ko thấy mã|l4m|link4m)', re.IGNORECASE),
 
 
 
-        "reply": "🔑 **Chào bạn!** Mã PIN 5 số để kích hoạt game trên Launcher được ghim công khai ngay trong bài viết của tựa game đó tại kênh <#1565547970487783475> nha! Bạn chỉ cần vào đúng bài của game đó là thấy mã nhé."
+        "reply": (
+            "🔑 **Chào bạn!** Mã PIN 5 số để kích hoạt game trên Launcher được gắn ngay trong bài viết của từng tựa game tại kênh <#1565547970487783475> nha!\n"
+            "💡 **Mẹo lấy PIN nhanh trong 30 giây (không bị ẩn nút):** Khi mở link lấy PIN, bạn nhớ **tắt VPN** và **tắt Chặn quảng cáo (biểu tượng cái khiên 🛡️ AdBlock ở góc phải thanh địa chỉ Opera GX / Brave / Cốc Cốc)** rồi bấm **`F5`** tải lại trang là sẽ thấy nút màu đỏ **`[L4M GET CODE]`** ở cuối trang web ngay!\n"
+            "⭐ *(Hoặc bạn có thể ủng hộ Gấu ly cà phê tại <#1565547962548092989> để nhận Role **Nhà Tài Trợ Vàng ⭐** mở khóa vĩnh viễn <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0% quảng cáo nhé!)*"
+        )
 
 
 
