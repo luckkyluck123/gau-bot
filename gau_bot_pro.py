@@ -5278,27 +5278,25 @@ async def on_message(message: discord.Message):
         unicode_emojis = re.findall(r'[𐀀-􏿿]', content)
         total_emojis = len(custom_emojis) + len(unicode_emojis)
 
-        # 3A. Nhồi quá nhiều emoji trong 1 tin (Emoji Flood >= 4 emoji hoặc tin nhắn chỉ toàn custom emoji >= 2)
-        cleaned_no_spaces = content.strip().replace(' ', '').replace('\n', '')
-        is_all_custom_emojis = bool(custom_emojis) and len(cleaned_no_spaces) == sum(len(e) for e in custom_emojis)
-        if total_emojis >= 4 or (total_emojis >= 2 and is_all_custom_emojis):
+        # 3A. Nhồi quá nhiều emoji trong 1 tin (Emoji Flood >= 10 emoji; thả vài icon 😭 / 🤣🤣🤣 bình thường không khóa)
+        if total_emojis >= 10:
             is_spam = True
             spam_reason = f'Bão Emoji (nhồi {total_emojis} emoji trong 1 tin)'
 
-        # 3B. Spam tin nhắn / Emoji trùng lặp liên tiếp 2 lần trong 15s
-        elif len(user_data['recent_messages']) >= 2:
-            last_2 = user_data['recent_messages'][-2:]
-            if last_2[0][1] and last_2[0][1] == last_2[1][1]:
+        # 3B. Spam tin nhắn / Emoji trùng lặp liên tiếp 4 lần trong 15s
+        elif len(user_data['recent_messages']) >= 4:
+            last_4 = user_data['recent_messages'][-4:]
+            if last_4[0][1] and all(x[1] == last_4[0][1] for x in last_4):
                 is_spam = True
-                spam_reason = 'Spam nội dung / emoji trùng lặp liên tiếp 2 lần'
+                spam_reason = 'Spam nội dung / emoji trùng lặp liên tiếp 4 lần'
 
-        # 3C. Tốc độ gửi tin nhắn quá nhanh (3 tin trong 5 giây HOẶC 5 tin trong 10 giây)
-        elif len([t for t in user_data['timestamps'] if now - t < 5.0]) >= 3:
+        # 3C. Tốc độ gửi tin nhắn quá nhanh (6 tin trong 5 giây HOẶC 9 tin trong 10 giây)
+        elif len([t for t in user_data['timestamps'] if now - t < 5.0]) >= 6:
             is_spam = True
-            spam_reason = 'Gửi tin nhắn quá nhanh (3 tin trong 5 giây)'
-        elif len(user_data['timestamps']) >= 5:
+            spam_reason = 'Gửi tin nhắn quá nhanh (6 tin trong 5 giây)'
+        elif len(user_data['timestamps']) >= 9:
             is_spam = True
-            spam_reason = 'Làm loãng kênh chat (5 tin trong 10 giây)'
+            spam_reason = 'Làm loãng kênh chat (9 tin trong 10 giây)'
 
         if is_spam:
             # 1. Thu thập ID các tin nhắn vi phạm gần đây của user để xóa sạch (Purge)
