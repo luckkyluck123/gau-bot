@@ -4098,7 +4098,7 @@ async def on_interaction(interaction: discord.Interaction):
                 f"👉 **Bạn hãy gửi (hoặc bấm `Ctrl + V` dán) ảnh chụp màn hình biên lai chuyển khoản thành công** "
                 f"tới VietinBank `102880978780` (`TRAN THANH HIEP`) vào ngay phòng kín này.\n\n"
                 f"🤖 **Ngay khi bạn gửi ảnh lên, Bot AI của Gấu sẽ tự động đọc bill trong 3 giây để:**\n"
-                f"1️⃣ Cấp ngay Role **Nhà Tài Trợ Vàng ⭐** (vĩnh viễn).\n"
+                f"1️⃣ Cấp ngay Role **Nhà Tài Trợ Vàng ⭐** *(tự động tính thời hạn theo mốc 30k / 50k / 100k / 200k Vĩnh viễn)*.\n"
                 f"2️⃣ Mở khóa ngay phòng **Kho PIN Không Quảng Cáo** tại máy chủ chính **Việt Hóa Gấu Công Tâm** (`https://discord.gg/Ac7mcqCuPB`).\n"
                 f"3️⃣ Vinh danh bạn lên **Bảng Vàng Tri Ân**!",
                 view=close_v,
@@ -4171,18 +4171,25 @@ async def on_interaction(interaction: discord.Interaction):
             else:
                 target_uid = int(raw_arg)
                 force_perm = True
-            guild = bot.get_guild(GUILD_ID) or interaction.guild
-            target_m = guild.get_member(target_uid)
+            main_g = bot.get_guild(GUILD_ID) or interaction.guild
+            target_m = main_g.get_member(target_uid)
             if not target_m:
                 try:
-                    target_m = await guild.fetch_member(target_uid)
+                    target_m = await main_g.fetch_member(target_uid)
                 except Exception:
                     target_m = None
+            if not target_m and interaction.guild:
+                target_m = interaction.guild.get_member(target_uid)
+                if not target_m:
+                    try:
+                        target_m = await interaction.guild.fetch_member(target_uid)
+                    except Exception:
+                        target_m = None
             if not target_m:
                 await interaction.followup.send("❌ Không tìm thấy thành viên này trong server!", ephemeral=True)
                 return
             grant_res = await grant_vip_and_honor(
-                guild,
+                main_g,
                 target_m,
                 amount_str=f"{amt_override:,}đ" if amt_override else "Ly Cà Phê Ấm Lòng ☕",
                 amount_vnd=amt_override,
@@ -4843,9 +4850,24 @@ async def on_interaction(interaction: discord.Interaction):
 @bot.event
 async def on_member_join(member: discord.Member):
     global _stats_last_event_ts
-    if member.guild.id == GUILD_ID and (time.time() - _stats_last_event_ts >= 15):
-        _stats_last_event_ts = time.time()
-        await update_server_stats_panel(member.guild)
+    if member.guild.id == GUILD_ID:
+        try:
+            now_ts = int(time.time())
+            async with _vip_ledger_lock:
+                ledger = await _load_vip_ledger(member.guild)
+            rec = ledger.get(str(member.id))
+            if rec and rec.get("active"):
+                exp_at = int(rec.get("expires_at") or 0)
+                if exp_at == 0 or exp_at > now_ts:
+                    vip_r = member.guild.get_role(ROLE_VIP_ID)
+                    if vip_r and vip_r not in member.roles:
+                        await member.add_roles(vip_r, reason="Đồng bộ Role Nhà Tài Trợ Vàng từ Sổ VIP khi vào Server chính")
+                        log_event(f"⭐ [SYNC VIP ON JOIN] Đã tự động cấp Role VIP cho {member.name} khi vào Server chính")
+        except Exception as ex:
+            log_event(f"-> Cảnh báo sync VIP on join ({member.name}): {ex}")
+        if time.time() - _stats_last_event_ts >= 15:
+            _stats_last_event_ts = time.time()
+            await update_server_stats_panel(member.guild)
 
 
 @bot.event
