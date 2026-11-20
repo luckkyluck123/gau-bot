@@ -846,8 +846,11 @@ FAQ_PATTERNS = [
 
         "reply": (
             "🔑 **Chào bạn!** Mã PIN 5 số để kích hoạt game trên Launcher được gắn ngay trong bài viết của từng tựa game tại kênh <#1565547970487783475> nha!\n"
-            "💡 **Cách lấy PIN siêu nhanh (chỉ 10 giây):** Bấm vào link lấy PIN trong bài viết ➔ chờ đúng **10 giây** trên trang ➔ bấm **`[🔓 HIỆN MÃ PIN 5 SỐ NGAY]`** *(nếu trình duyệt bật sang tab quảng cáo mới, bạn chỉ cần đóng tab quảng cáo đó quay lại tab cũ là thấy ngay Mã PIN 5 số nhé)*!\n"
-            "⭐ *(Hoặc bạn có thể ủng hộ Gấu ly cà phê tại <#1565547962548092989> để nhận Role **Nhà Tài Trợ Vàng ⭐** mở khóa vĩnh viễn <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0 giây chờ nhé!)*"
+            "💡 **Cách lấy PIN 2 bước cực dễ (miễn phí, không giới hạn lượt):**\n"
+            "1️⃣ Bấm link lấy PIN trong bài viết ➔ **Bước 1/2:** chờ **10 giây** ➔ bấm nút **MÀU CAM** **`[➡️ TIẾP TỤC SANG BƯỚC 2/2]`**.\n"
+            "2️⃣ **Bước 2/2:** chờ thêm **10 giây** ➔ bấm nút **MÀU CAM** **`[🔓 HIỆN MÃ PIN 5 SỐ NGAY]`** là thấy ngay Mã PIN!\n"
+            "⚠️ **Mẹo quan trọng:** *KHÔNG bấm mấy nút \"Download / Tiếp tục\" lạ trong khung quảng cáo! Nếu bấm nút màu cam mà trình duyệt tự bật sang **tab quảng cáo mới** ➔ Bạn CHỈ CẦN **TẮT (ĐÓNG) TAB MỚI ĐÓ** quay lại tab cũ là thấy tiếp Bước 2 / Mã PIN ngay.*\n"
+            "⭐ *(Hoặc ủng hộ Gấu từ 30k/tháng tại <#1565547962548092989> để nhận Role **Nhà Tài Trợ Vàng ⭐** mở khóa <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0 giây chờ nhé!)*"
         )
 
 
@@ -3085,7 +3088,7 @@ async def maintain_vip_expiry_loop():
                             await m.send(
                                 f"☕ Chào **{m.display_name}**, thời hạn **Nhà Tài Trợ Vàng ⭐** của bạn tại **Studio Gấu Công Tâm** vừa kết thúc!\n"
                                 f"• 💰 Tổng mức đã tiếp lửa tích lũy của bạn hiện là: **`{tot_vnd:,}đ / 200.000đ`** *(còn **`{rem:,}đ`** nữa là lên **VIP Vĩnh Viễn trọn đời**)*.\n"
-                                f"• Bạn vẫn tải toàn bộ game hoàn toàn miễn phí qua cổng 10 giây, hoặc ghé `<#{COFFEE_CH_ID}>` bất cứ lúc nào để gia hạn tiếp nhé! ❤️"
+                                f"• Bạn vẫn tải toàn bộ game hoàn toàn miễn phí qua cổng 2 bước (10s + 10s), hoặc ghé `<#{COFFEE_CH_ID}>` bất cứ lúc nào để gia hạn tiếp nhé! ❤️"
                             )
                         except Exception:
                             pass
