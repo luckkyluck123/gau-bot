@@ -205,7 +205,8 @@ SERVER_CONFIGS = {
         "forum_ch_id": 1572078855483687005,
         "admin_ch_id": None,
         "vip_pin_ch_id": 1573315591094149131,
-        "vip_role_id": 1560143703203389470,
+        "vip_role_id": None,
+        "vip_pin_per_user": True,
         "enable_guide_banner": False,
         "enable_dashboard": False,
     },
@@ -2968,16 +2969,24 @@ async def grant_vip_and_honor(
     if vip_granted:
         for srv_gid, scfg in SERVER_CONFIGS.items():
             g_srv = bot.get_guild(srv_gid)
-            rid_srv = scfg.get("vip_role_id")
-            if not g_srv or not rid_srv:
+            if not g_srv:
                 continue
-            r_obj = g_srv.get_role(rid_srv)
+            rid_srv = scfg.get("vip_role_id")
             m_obj = g_srv.get_member(member.id)
-            if r_obj and m_obj and r_obj not in m_obj.roles:
-                try:
-                    await m_obj.add_roles(r_obj, reason=f"Ủng hộ Gấu Cà Phê ({amount_str}) - {note_src}")
-                except Exception as re_ex:
-                    log_event(f"-> Lỗi add Role VIP ({scfg['name']}): {re_ex}")
+            if rid_srv and m_obj:
+                r_obj = g_srv.get_role(rid_srv)
+                if r_obj and r_obj not in m_obj.roles:
+                    try:
+                        await m_obj.add_roles(r_obj, reason=f"Ủng hộ Gấu Cà Phê ({amount_str}) - {note_src}")
+                    except Exception as re_ex:
+                        log_event(f"-> Lỗi add Role VIP ({scfg['name']}): {re_ex}")
+            if scfg.get("vip_pin_per_user") and scfg.get("vip_pin_ch_id") and m_obj:
+                vp_ch = g_srv.get_channel(scfg["vip_pin_ch_id"])
+                if vp_ch:
+                    try:
+                        await vp_ch.set_permissions(m_obj, view_channel=True, read_message_history=True, send_messages=False, reason=f"Mở khóa PIN VIP khu PC ({amount_str})")
+                    except Exception:
+                        pass
 
     hof_ch = main_g.get_channel(HALL_OF_FAME_CH_ID)
     if hof_ch:
@@ -3091,17 +3100,25 @@ async def maintain_vip_expiry_loop():
                     removed_any = False
                     for srv_gid, scfg in SERVER_CONFIGS.items():
                         g_srv = bot.get_guild(srv_gid)
-                        rid_srv = scfg.get("vip_role_id")
-                        if not g_srv or not rid_srv:
+                        if not g_srv:
                             continue
-                        r_srv = g_srv.get_role(rid_srv)
+                        rid_srv = scfg.get("vip_role_id")
                         m_srv = g_srv.get_member(uid)
-                        if m_srv and r_srv and r_srv in m_srv.roles:
-                            try:
-                                await m_srv.remove_roles(r_srv, reason="Hết thời hạn gói Nhà Tài Trợ Vàng")
-                                removed_any = True
-                            except Exception:
-                                pass
+                        if rid_srv and m_srv:
+                            r_srv = g_srv.get_role(rid_srv)
+                            if r_srv and r_srv in m_srv.roles:
+                                try:
+                                    await m_srv.remove_roles(r_srv, reason="Hết thời hạn gói Nhà Tài Trợ Vàng")
+                                    removed_any = True
+                                except Exception:
+                                    pass
+                        if scfg.get("vip_pin_per_user") and scfg.get("vip_pin_ch_id") and m_srv:
+                            vp_ch = g_srv.get_channel(scfg["vip_pin_ch_id"])
+                            if vp_ch:
+                                try:
+                                    await vp_ch.set_permissions(m_srv, overwrite=None, reason="Hết thời hạn gói Nhà Tài Trợ Vàng khu PC")
+                                except Exception:
+                                    pass
                     m = main_g.get_member(uid)
                     if removed_any and m:
                         try:
