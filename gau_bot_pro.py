@@ -491,6 +491,25 @@ async def _find_forum_thread_url(guild, forum_ch_id, game_title: str):
     return None
 
 
+def _is_vip_member(user) -> bool:
+    if not user:
+        return False
+    if getattr(user, "guild_permissions", None) and user.guild_permissions.administrator:
+        return True
+    roles = getattr(user, "roles", []) or []
+    if any(r.id in (ROLE_VIP_ID, ROLE_ADMIN_ID) for r in roles):
+        return True
+    try:
+        main_g = bot.get_guild(GUILD_ID)
+        if main_g:
+            m = main_g.get_member(user.id)
+            if m and (m.guild_permissions.administrator or any(r.id in (ROLE_VIP_ID, ROLE_ADMIN_ID) for r in m.roles)):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _extract_req_card_info(embed, components, thread=None, fallback_vote_id: str = None):
     vote_id = fallback_vote_id
     total_votes = 1
@@ -522,7 +541,7 @@ def _extract_req_card_info(embed, components, thread=None, fallback_vote_id: str
 
     title_raw = (embed.title if embed and embed.title else "") or ""
     game_title = re.sub(
-        r"^(?:💡\s*ĐỀ XUẤT GAME MỚI|🛠️\s*ĐANG VIỆT HÓA|✅\s*ĐÃ HOÀN THÀNH)\s*:\s*",
+        r"^(?:👑\s*\[ƯU TIÊN VIP\]\s*ĐỀ XUẤT GAME|💡\s*ĐỀ XUẤT GAME MỚI|🛠️\s*ĐANG VIỆT HÓA|✅\s*ĐÃ HOÀN THÀNH)\s*:\s*",
         "",
         title_raw,
         flags=re.IGNORECASE,
@@ -531,7 +550,7 @@ def _extract_req_card_info(embed, components, thread=None, fallback_vote_id: str
     status = "open"
     if title_raw.startswith("✅") or (embed and embed.color and embed.color.value == 0x2ECC71):
         status = "done"
-    elif title_raw.startswith("🛠️") or (embed and embed.color and embed.color.value == 0xF1C40F):
+    elif title_raw.startswith("🛠️"):
         status = "wip"
 
     if embed:
@@ -549,17 +568,19 @@ def _extract_req_card_info(embed, components, thread=None, fallback_vote_id: str
             elif fname == "📊 Tiến Độ":
                 if "HOÀN THÀNH" in fval.upper() or "🟢" in fval:
                     status = "done"
-                elif "ĐANG" in fval.upper() or "🟡" in fval:
+                elif "STUDIO GẤU ĐANG" in fval.upper() or "🟡" in fval:
                     status = "wip"
                 if not game_post_url:
                     m_url = re.search(r"https://discord\.com/channels/\d+/\d+", fval)
                     if m_url:
                         game_post_url = m_url.group(0)
 
+    is_vip_card = ("👑" in title_raw) or ("NHÀ TÀI TRỢ VÀNG" in requester_mention.upper()) or ("👑" in requester_mention)
     return {
         "vote_id": vote_id,
         "game_title": game_title or "Tựa Game",
         "requester_mention": requester_mention,
+        "is_vip_card": is_vip_card,
         "total_votes": total_votes,
         "status": status,
         "comment_url": comment_url,
@@ -655,6 +676,10 @@ def apply_request_status_to_embed(
     actor_mention: str = None,
     game_post_url: str = None,
 ):
+    is_vip_card = ("👑" in (embed.title or "")) or any(
+        f.name == "👤 Người Đề Xuất" and ("👑" in (f.value or "") or "NHÀ TÀI TRỢ VÀNG" in (f.value or "").upper())
+        for f in embed.fields
+    )
     if status == "done":
         embed.title = f"✅ ĐÃ HOÀN THÀNH: {game_title}"[:256]
         embed.color = 0x2ECC71
@@ -666,6 +691,10 @@ def apply_request_status_to_embed(
         embed.color = 0xF1C40F
         by_txt = f" *(Cập nhật bởi {actor_mention})*" if actor_mention else ""
         status_text = f"🟡 **STUDIO GẤU ĐANG TIẾN HÀNH VIỆT HÓA**{by_txt}"
+    elif is_vip_card:
+        embed.title = f"👑 [ƯU TIÊN VIP] ĐỀ XUẤT GAME: {game_title}"[:256]
+        embed.color = 0xFFAE00
+        status_text = "👑 **Đề xuất ưu tiên (Nhà Tài Trợ Vàng ⭐) • Đang mở bình chọn**"
     else:
         embed.title = f"💡 ĐỀ XUẤT GAME MỚI: {game_title}"[:256]
         embed.color = 0x3498DB
@@ -1474,58 +1503,55 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
 
 
 
-        embed = discord.Embed(
-
-
-
-            title=f"💡 ĐỀ XUẤT GAME MỚI: {self.game_name.value.strip()}",
-
-
-
-            color=0x3498db
-
-
-
+        is_vip = _is_vip_member(interaction.user)
+        init_base_votes = 2 if is_vip else 0
+        init_total_votes = 3 if is_vip else 1
+        card_title = (
+            f"👑 [ƯU TIÊN VIP] ĐỀ XUẤT GAME: {self.game_name.value.strip()}"
+            if is_vip
+            else f"💡 ĐỀ XUẤT GAME MỚI: {self.game_name.value.strip()}"
+        )
+        card_color = 0xFFAE00 if is_vip else 0x3498DB
+        requester_val = (
+            f"{interaction.user.mention} 👑 (**Nhà Tài Trợ Vàng ⭐**)"
+            if is_vip
+            else interaction.user.mention
+        )
+        votes_val = "⭐ **3 Votes** *(Đặc quyền VIP +2)*" if is_vip else "⭐ **1 Vote**"
+        progress_val = (
+            "👑 **Đề xuất ưu tiên (Nhà Tài Trợ Vàng ⭐) • Đang mở bình chọn**"
+            if is_vip
+            else "🔵 **Đang mở bình chọn**"
         )
 
-
-
+        embed = discord.Embed(
+            title=card_title[:256],
+            color=card_color,
+        )
         embed.add_field(name="🎮 Tựa Game", value=f"**{self.game_name.value.strip()}**", inline=True)
-
-
-
-        embed.add_field(name="👤 Người Đề Xuất", value=interaction.user.mention, inline=True)
-
-
+        embed.add_field(name="👤 Người Đề Xuất", value=requester_val, inline=True)
 
         if self.game_link.value.strip():
-
-
-
             embed.add_field(name="🔗 Link / Thể Loại", value=self.game_link.value.strip(), inline=False)
 
-
-
         embed.add_field(name="💬 Lý Do Đề Xuất", value=self.reason.value.strip(), inline=False)
-
-
-
-        embed.add_field(name="🔥 Lượt Bình Chọn", value="⭐ **1 Vote**", inline=False)
-        embed.add_field(name="📊 Tiến Độ", value="🔵 **Đang mở bình chọn**", inline=False)
+        embed.add_field(name="🔥 Lượt Bình Chọn", value=votes_val, inline=False)
+        embed.add_field(name="📊 Tiến Độ", value=progress_val, inline=False)
         embed.set_footer(text=f"Bình chọn • {datetime.now(VN_TZ).strftime('%d/%m/%Y')}")
 
         vote_id = f"req_{int(time.time())}"
         votes = load_votes()
         votes[vote_id] = {
             "game": self.game_name.value.strip(),
-            "base_count": 0,
-            "count": 1,
+            "base_count": init_base_votes,
+            "count": init_total_votes,
             "voters": [interaction.user.id],
             "status": "open",
+            "is_vip": is_vip,
         }
         save_votes(votes)
 
-        view = build_request_card_view(vote_id, 1, comment_url=None, status="open")
+        view = build_request_card_view(vote_id, init_total_votes, comment_url=None, status="open")
 
         req_msg = await req_ch.send(embed=embed, view=view)
 
@@ -1547,32 +1573,41 @@ class GameRequestModal(discord.ui.Modal, title="💡 ĐỀ XUẤT GAME VIỆT H�
                     f"💬 **Khu vực bình luận cho tựa game: {self.game_name.value.strip()}**\n"
                     f"👉 Mời {interaction.user.mention} và anh em cùng bình luận, bổ sung link hoặc đánh giá về game này ngay tại đây nhé!"
                 )
-                view = build_request_card_view(vote_id, 1, comment_url=req_thread.jump_url, status="open")
+                view = build_request_card_view(vote_id, init_total_votes, comment_url=req_thread.jump_url, status="open")
                 await req_msg.edit(view=view)
             except Exception as tex:
                 log_event(f"Lỗi gắn nút thread đề xuất game: {tex}")
 
-        await interaction.followup.send(f"🎉 Đã gửi đề xuất tựa game **{self.game_name.value.strip()}** lên kênh kèm khung bình luận riêng để anh em cùng vote & thảo luận!", ephemeral=True)
+        vip_note = " *(👑 Đã kích hoạt Khung Vàng Kim Ưu Tiên & +3 Votes mở màn cho **Nhà Tài Trợ Vàng ⭐**)*" if is_vip else ""
+        await interaction.followup.send(
+            f"🎉 Đã gửi đề xuất tựa game **{self.game_name.value.strip()}** lên kênh kèm khung bình luận riêng để anh em cùng vote & thảo luận!{vip_note}",
+            ephemeral=True,
+        )
 
         # Báo ngay sang kênh #lệnh-quản-lý cho Admin ở server chính
         primary_guild = bot.get_guild(GUILD_ID)
         admin_ch = primary_guild.get_channel(ADMIN_CH_ID) if primary_guild else None
         if admin_ch:
             srv_tag = f" [{guild.name}]" if guild and guild.id != GUILD_ID else ""
+            adm_title = (
+                f"👑 [ƯU TIÊN VIP - NHÀ TÀI TRỢ VÀNG]{srv_tag} ĐỀ XUẤT GAME: {self.game_name.value.strip()}"
+                if is_vip
+                else f"💡 CÓ ĐỀ XUẤT VIỆT HÓA MỚI{srv_tag}: {self.game_name.value.strip()}"
+            )
             admin_embed = discord.Embed(
-                title=f"💡 CÓ ĐỀ XUẤT VIỆT HÓA MỚI{srv_tag}: {self.game_name.value.strip()}",
+                title=adm_title[:256],
                 description=(
-                    f"👤 **Người đề xuất:** {interaction.user.mention} (`{interaction.user.name}`)\n"
+                    f"👤 **Người đề xuất:** {requester_val} (`{interaction.user.name}`)\n"
                     f"🎮 **Game:** **{self.game_name.value.strip()}**\n"
                     f"💬 **Lý do:** {self.reason.value.strip()}\n\n"
                     f"👉 **[BẤM VÀO ĐÂY ĐỂ XEM THẺ BÌNH CHỌN TRÊN KÊNH]({req_msg.jump_url})**"
                 ),
-                color=0x3498db
+                color=card_color,
             )
             admin_embed.set_footer(text="Studio Gấu Công Tâm • Quản lý đề xuất")
             try:
                 await admin_ch.send(
-                    f"💡 <@&{ROLE_ADMIN_ID}> Có thành viên vừa đề xuất game Việt hóa mới!",
+                    f"{'👑' if is_vip else '💡'} <@&{ROLE_ADMIN_ID}> Có {'Nhà Tài Trợ Vàng ⭐' if is_vip else 'thành viên'} vừa đề xuất game Việt hóa mới!",
                     embed=admin_embed
                 )
             except Exception as e:
@@ -2776,6 +2811,54 @@ async def grant_vip_and_honor(guild: discord.Guild, member: discord.Member, amou
             embed.set_thumbnail(url=member.display_avatar.url)
         await hof_ch.send(embed=embed)
 
+    # Auto-upgrade any existing open game requests by this new VIP member into Golden VIP Cards (+2 bonus votes)
+    for srv_gid, scfg in SERVER_CONFIGS.items():
+        g_obj = bot.get_guild(srv_gid)
+        req_id = scfg.get("req_ch_id")
+        if not g_obj or not req_id:
+            continue
+        req_ch = g_obj.get_channel(req_id)
+        if not req_ch:
+            continue
+        try:
+            async for m in req_ch.history(limit=40):
+                if m.author != bot.user or not m.embeds:
+                    continue
+                emb = m.embeds[0]
+                if "HÒM PHIẾU ĐỀ XUẤT" in (emb.title or "") or "👑" in (emb.title or ""):
+                    continue
+                info = _extract_req_card_info(emb, m.components, getattr(m, "thread", None))
+                if f"<@{member.id}>" not in info["requester_mention"] and f"<@!{member.id}>" not in info["requester_mention"]:
+                    continue
+                new_votes = info["total_votes"] + 2
+                if info["status"] == "open":
+                    emb.title = f"👑 [ƯU TIÊN VIP] ĐỀ XUẤT GAME: {info['game_title']}"[:256]
+                    emb.color = 0xFFAE00
+                for idx, fld in enumerate(emb.fields):
+                    if fld.name == "👤 Người Đề Xuất":
+                        emb.set_field_at(idx, name="👤 Người Đề Xuất", value=f"<@{member.id}> 👑 (**Nhà Tài Trợ Vàng ⭐**)", inline=True)
+                    elif fld.name == "🔥 Lượt Bình Chọn":
+                        emb.set_field_at(idx, name="🔥 Lượt Bình Chọn", value=f"⭐ **{new_votes} Votes** *(Đặc quyền VIP +2)*", inline=False)
+                    elif fld.name == "📊 Tiến Độ" and info["status"] == "open":
+                        emb.set_field_at(idx, name="📊 Tiến Độ", value="👑 **Đề xuất ưu tiên (Nhà Tài Trợ Vàng ⭐) • Đang mở bình chọn**", inline=False)
+                if info["vote_id"]:
+                    votes = load_votes()
+                    if info["vote_id"] in votes:
+                        votes[info["vote_id"]]["base_count"] = votes[info["vote_id"]].get("base_count", 0) + 2
+                        votes[info["vote_id"]]["count"] = new_votes
+                        votes[info["vote_id"]]["is_vip"] = True
+                        save_votes(votes)
+                new_v = build_request_card_view(
+                    info["vote_id"],
+                    new_votes,
+                    comment_url=info["comment_url"],
+                    status=info["status"],
+                    game_post_url=info["game_post_url"],
+                )
+                await m.edit(embed=emb, view=new_v)
+        except Exception as ue:
+            log_event(f"-> Cảnh báo nâng cấp thẻ đề xuất VIP cho {member.name}: {ue}")
+
 
 # ==================== 24H AUTOMATED DAILY PIN ROTATION ENGINE ====================
 import random
@@ -3296,60 +3379,34 @@ async def ensure_req_channel_banner(guild, req_ch_id=REQ_CH_ID):
 
 
 
-    if not banner_msg:
-
-
-
-        embed = discord.Embed(
-            title="💡 HÒM PHIẾU ĐỀ XUẤT GAME VIỆT HÓA — GẤU CÔNG TÂM",
-            description=(
-                "Anh em đang mong muốn Studio Việt hóa tựa game nào tiếp theo? "
-                "Hãy bấm nút xanh bên dưới để gửi đề xuất nhé!\n\n"
-                "📌 **CÁCH THỨC BÌNH CHỌN & THẢO LUẬN:**\n"
-                "1️⃣ Bấm nút **`[💡 Gửi Đề Xuất Game Mới]`** bên dưới.\n"
-                "2️⃣ Điền: **Tên game**, **Link Steam / Thể loại**, và **Lý do đề xuất**.\n"
-                "3️⃣ Cả cộng đồng sẽ cùng thả tim **`[👍 Vote Thích Game Này]`**. Tựa game nào được nhiều anh em yêu thích nhất, Studio sẽ ưu tiên lên kế hoạch xúc tiến dịch sớm!\n"
-                "4️⃣ Bấm nút **`[💬 Bình luận]`** (hoặc thanh **Thảo luận**) dưới mỗi thẻ để góp ý và trò chuyện riêng về tựa game đó!"
-            ),
-            color=0x3498db
-        )
-
-
-
-        embed.set_footer(text="Studio Gấu Công Tâm • Lắng nghe ý kiến cộng đồng")
-
-
-
-        view = discord.ui.View(timeout=None)
-
-
-
-        btn = discord.ui.Button(
-
-
-
-            label="💡 Gửi Đề Xuất Game Mới",
-
-
-
-            style=discord.ButtonStyle.primary,
-
-
-
-            custom_id="btn_open_req_modal"
-
-
-
-        )
-
-
-
-        view.add_item(btn)
-
-
-
+    embed = discord.Embed(
+        title="💡 HÒM PHIẾU ĐỀ XUẤT GAME VIỆT HÓA — GẤU CÔNG TÂM",
+        description=(
+            "Anh em đang mong muốn Studio Việt hóa tựa game nào tiếp theo? "
+            "Hãy bấm nút xanh bên dưới để gửi đề xuất nhé!\n\n"
+            "📌 **CÁCH THỨC BÌNH CHỌN & THẢO LUẬN:**\n"
+            "1️⃣ Bấm nút **`[💡 Gửi Đề Xuất Game Mới]`** bên dưới.\n"
+            "2️⃣ Điền: **Tên game**, **Link Steam / Thể loại**, và **Lý do đề xuất**.\n"
+            "3️⃣ Cả cộng đồng sẽ cùng thả tim **`[👍 Vote Thích Game Này]`**. Tựa game nào được nhiều anh em yêu thích nhất, Studio sẽ ưu tiên lên kế hoạch xúc tiến dịch sớm!\n"
+            "4️⃣ Bấm nút **`[💬 Bình luận]`** (hoặc thanh **Thảo luận**) dưới mỗi thẻ để góp ý và trò chuyện riêng về tựa game đó!\n\n"
+            "👑 **ĐẶC QUYỀN NHÀ TÀI TRỢ VÀNG ⭐:**\n"
+            "• Khi **Nhà Tài Trợ Vàng ⭐** gửi đề xuất, thẻ sẽ tự động bật **Khung Vàng Kim `👑 [ƯU TIÊN VIP]`**, gắn huy hiệu **Nhà Tài Trợ Vàng ⭐** cạnh tên và được **tặng sẵn 3 Votes mở màn**!\n"
+            "• Mỗi lần **Nhà Tài Trợ Vàng ⭐** bấm bình chọn game bất kỳ đều được tính **x2 Lượt Vote (+2 Votes)**!"
+        ),
+        color=0x3498db
+    )
+    embed.set_footer(text="Studio Gấu Công Tâm • Lắng nghe ý kiến cộng đồng")
+    view = discord.ui.View(timeout=None)
+    btn = discord.ui.Button(
+        label="💡 Gửi Đề Xuất Game Mới",
+        style=discord.ButtonStyle.primary,
+        custom_id="btn_open_req_modal"
+    )
+    view.add_item(btn)
+    if banner_msg:
+        await banner_msg.edit(embed=embed, view=view)
+    else:
         await req_ch.send(embed=embed, view=view)
-
         log_event("-> Đã gắn Bảng Nút Đề Xuất vào kênh #💡・yêu-cầu-việt-hóa")
 
     cfg = get_server_cfg(guild.id if guild else GUILD_ID)
@@ -3380,25 +3437,25 @@ async def ensure_guide_channel_banner(guild):
 
     desc = (
         "Chào mừng anh em đến với **Studio Gấu Công Tâm**!\n\n"
-        "Nhằm bảo vệ an toàn máy tính tối đa và giúp anh em cài đặt game thành công 100%, Studio cung cấp kênh hỗ trợ **Trực Tiếp 1-1**:\n\n"
-        "🆘 **TẠO PHÒNG KÍN RIÊNG TƯ ĐỂ NÓI CHUYỆN TRỰC TIẾP VỚI ADMIN:**\n"
-        "• Bạn cần tìm nguồn game sạch, an toàn, không lo dính virus đào coin hay mã độc?\n"
-        "• Bạn không biết cách tải, cần Admin hỗ trợ trực tiếp?\n"
-        "• Cài game bị lỗi màn hình đen, văng game, thiếu file dll, Windows Defender nuốt file, hay kẹt mã PIN?\n\n"
-        "👉 **BẤM NÚT ĐỎ BÊN DƯỚI:**\n"
+        "Nhằm bảo vệ an toàn máy tính tối đa và giúp anh em cài đặt game thành công 100%, Studio cung cấp kênh hỗ trợ **Trực Tiếp 1-1** dành riêng để tri ân các **Nhà Tài Trợ Vàng ⭐**:\n\n"
+        "👑 **ĐẶC QUYỀN NHÀ TÀI TRỢ VÀNG ⭐ — TẠO PHÒNG KÍN 1-1 CÙNG BÁC GẤU:**\n"
+        "• Nhờ Bác Gấu tìm nguồn game sạch (Google Drive/Fshare tốc độ cao), an toàn 100%, không lo dính virus đào coin hay mã độc.\n"
+        "• Nhờ Admin hướng dẫn tải & cài đặt trực tiếp từng bước (hoặc qua UltraViewer/AnyDesk).\n"
+        "• Xử lý tận gốc mọi lỗi màn hình đen, văng game, thiếu file `.dll`, Windows Defender nuốt file.\n\n"
+        "👉 **BẤM NÚT ĐỎ BÊN DƯỚI (Dành cho Nhà Tài Trợ Vàng ⭐):**\n"
         "Bot sẽ tự động mở ngay **1 Phòng Kín Riêng Tư (Private 1:1)** — **Bác Gấu (Admin)** sẽ trực tiếp vào nói chuyện, gửi nguồn game sạch và hướng dẫn tận tình cầm tay chỉ việc cho bạn!\n\n"
-        "🔒 *Phòng hỗ trợ là Private kín đáo (chỉ có bạn và Admin nhìn thấy), hai bên trao đổi thoải mái cho đến khi vào game thành công.*"
+        f"☕ *(Chưa có Role **Nhà Tài Trợ Vàng ⭐**? Bạn chỉ cần mời Gấu một ly cà phê tùy tâm tại <#{COFFEE_CH_ID}> — Bot AI tự động duyệt & mở khóa đặc quyền vĩnh viễn trong 3 giây!)*"
     )
     embed = discord.Embed(
-        title='🎮 TRUNG TÂM TẠO PHÒNG RIÊNG HỖ TRỢ CÀI GAME — STUDIO GẤU CÔNG TÂM',
+        title='👑 TRUNG TÂM TÌM NGUỒN GAME SẠCH & HỖ TRỢ CÀI ĐẶT 1-1 (ĐẶC QUYỀN VIP)',
         description=desc,
-        color=0xe74c3c
+        color=0xf1c40f
     )
-    embed.set_footer(text='Bấm nút bên dưới để tạo phòng riêng và nói chuyện trực tiếp với Admin!')
+    embed.set_footer(text='Đặc quyền Vĩnh Viễn dành cho Nhà Tài Trợ Vàng ⭐ • Bấm nút bên dưới để mở phòng 1-1 cùng Admin!')
 
     view = discord.ui.View(timeout=None)
     btn_install = discord.ui.Button(
-        label='🆘 Nhấn Vào Đây Để Tạo Phòng Riêng (Nói Chuyện Trực Tiếp Với Admin)',
+        label='👑 Mở Phòng Kín 1-1 Nhờ Gấu Tìm Game & Hỗ Trợ Cài (Đặc Quyền VIP ⭐)',
         style=discord.ButtonStyle.danger,
         custom_id='btn_open_install_help_modal'
     )
@@ -3959,34 +4016,26 @@ async def on_interaction(interaction: discord.Interaction):
 
 
 
-        # 6. Bấm nút Nhờ Tìm Game -> Mở Modal Form
-
-
-
-        if custom_id == 'btn_open_install_help_modal':
-
-
-
-            await interaction.response.send_modal(InstallHelpRequestModal())
-
-
-
-            return
-
-
-
-
-
-
-
-        if custom_id == 'btn_open_find_game_modal':
-
-
-
-            await interaction.response.send_modal(FindGameRequestModal())
-
-
-
+        # 6. Bấm nút Nhờ Tìm Game -> Kiểm tra Role Nhà Tài Trợ Vàng ⭐ rồi mở Modal Form
+        if custom_id in ('btn_open_install_help_modal', 'btn_open_find_game_modal'):
+            if not _is_vip_member(interaction.user):
+                await interaction.response.send_message(
+                    "👑 **ĐẶC QUYỀN DÀNH RIÊNG CHO NHÀ TÀI TRỢ VÀNG ⭐**\n\n"
+                    "Tính năng **Mở Phòng Kín 1-1 Nhờ Bác Gấu Tìm Nguồn Game Sạch & Hỗ Trợ Cài Đặt Trực Tiếp** "
+                    "là đặc quyền tri ân dành riêng cho các **Nhà Tài Trợ Vàng ⭐**!\n\n"
+                    f"👉 Bạn chỉ cần mời Gấu một ly cà phê tùy tâm tại <#{COFFEE_CH_ID}> "
+                    "*(bấm nút gửi ảnh bill chuyển khoản, Bot AI tự động duyệt & cấp Role trong 3 giây)* để mở khóa **vĩnh viễn** trọn bộ đặc quyền:\n"
+                    f"• 🔑 Xem thẳng toàn bộ **Mã PIN 5 Số 24h (0% quảng cáo)** tại <#{VIP_PIN_CH_ID}>.\n"
+                    "• 🆘 Mở **Phòng Kín 1-1 Nhờ Gấu Tìm Nguồn Game Sạch & Hỗ Trợ Cài Đặt Trực Tiếp**.\n"
+                    f"• 👑 Đề xuất game đóng khung **Vàng Kim `[ƯU TIÊN VIP]` (+3 Votes mở màn)** & **Quyền Vote x2** tại <#{REQ_CH_ID}>.\n\n"
+                    f"*(💡 Nếu bạn gặp lỗi trong bản dịch, bạn vẫn có thể báo lỗi miễn phí 100% tại <#{BUG_CH_ID}> nhé!)*",
+                    ephemeral=True,
+                )
+                return
+            if custom_id == 'btn_open_install_help_modal':
+                await interaction.response.send_modal(InstallHelpRequestModal())
+            else:
+                await interaction.response.send_modal(FindGameRequestModal())
             return
 
 
@@ -4070,7 +4119,10 @@ async def on_interaction(interaction: discord.Interaction):
                 await interaction.response.send_message("❤️ Bạn đã bình chọn cho tựa game này rồi nha!", ephemeral=True)
                 return
 
+            is_vip_voter = _is_vip_member(interaction.user)
             voters.append(interaction.user.id)
+            if is_vip_voter:
+                votes[vote_id]['base_count'] = votes[vote_id].get('base_count', 0) + 1
             total_votes = votes[vote_id].get('base_count', 0) + len(voters)
             votes[vote_id]['count'] = total_votes
             save_votes(votes)
@@ -4078,7 +4130,8 @@ async def on_interaction(interaction: discord.Interaction):
             if embed:
                 for i, field in enumerate(embed.fields):
                     if field.name == "🔥 Lượt Bình Chọn":
-                        embed.set_field_at(i, name="🔥 Lượt Bình Chọn", value=f"⭐ **{total_votes} Votes**", inline=False)
+                        v_txt = f"⭐ **{total_votes} Votes** *(Đặc quyền VIP)*" if info.get("is_vip_card") else f"⭐ **{total_votes} Votes**"
+                        embed.set_field_at(i, name="🔥 Lượt Bình Chọn", value=v_txt, inline=False)
                         break
 
             view = build_request_card_view(
@@ -4089,7 +4142,10 @@ async def on_interaction(interaction: discord.Interaction):
                 game_post_url=info["game_post_url"],
             )
             await interaction.response.edit_message(embed=embed, view=view)
-            await interaction.followup.send("🎉 Cảm ơn bạn đã bình chọn cho tựa game này!", ephemeral=True)
+            if is_vip_voter:
+                await interaction.followup.send("👑 Cảm ơn **Nhà Tài Trợ Vàng ⭐** đã bình chọn! Lá phiếu đặc quyền của bạn được tính **+2 Votes**!", ephemeral=True)
+            else:
+                await interaction.followup.send("🎉 Cảm ơn bạn đã bình chọn cho tựa game này!", ephemeral=True)
             return
 
         if custom_id.startswith(('btn_req_wip_', 'btn_req_done_', 'btn_req_reopen_')):
