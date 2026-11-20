@@ -3373,6 +3373,7 @@ async def rotate_daily_pins_24h(force: bool = False) -> dict:
             )
 
             # 3. Notify Admin in #🤖・lệnh-quản-lý
+            main_g = bot.get_guild(GUILD_ID)
             if main_g:
                 admin_ch = main_g.get_channel(ADMIN_CH_ID)
                 if admin_ch:
