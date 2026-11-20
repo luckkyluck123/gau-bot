@@ -191,6 +191,8 @@ SERVER_CONFIGS = {
         "launcher_ch_id": GUIDE_CH_ID,
         "forum_ch_id": GAME_FORUM_CH_ID,
         "admin_ch_id": ADMIN_CH_ID,
+        "vip_pin_ch_id": VIP_PIN_CH_ID,
+        "vip_role_id": ROLE_VIP_ID,
         "enable_guide_banner": True,
         "enable_dashboard": True,
     },
@@ -202,6 +204,8 @@ SERVER_CONFIGS = {
         "launcher_ch_id": 1572078837691584582,
         "forum_ch_id": 1572078855483687005,
         "admin_ch_id": None,
+        "vip_pin_ch_id": 1573315591094149131,
+        "vip_role_id": 1560143703203389470,
         "enable_guide_banner": False,
         "enable_dashboard": False,
     },
@@ -2962,13 +2966,18 @@ async def grant_vip_and_honor(
         await _save_vip_ledger(main_g)
 
     if vip_granted:
-        vip_role = main_g.get_role(ROLE_VIP_ID)
-        main_m = main_g.get_member(member.id) or member
-        if vip_role and hasattr(main_m, "roles") and vip_role not in main_m.roles:
-            try:
-                await main_m.add_roles(vip_role, reason=f"Ủng hộ Gấu Cà Phê ({amount_str}) - {note_src}")
-            except Exception as re_ex:
-                log_event(f"-> Lỗi add Role VIP: {re_ex}")
+        for srv_gid, scfg in SERVER_CONFIGS.items():
+            g_srv = bot.get_guild(srv_gid)
+            rid_srv = scfg.get("vip_role_id")
+            if not g_srv or not rid_srv:
+                continue
+            r_obj = g_srv.get_role(rid_srv)
+            m_obj = g_srv.get_member(member.id)
+            if r_obj and m_obj and r_obj not in m_obj.roles:
+                try:
+                    await m_obj.add_roles(r_obj, reason=f"Ủng hộ Gấu Cà Phê ({amount_str}) - {note_src}")
+                except Exception as re_ex:
+                    log_event(f"-> Lỗi add Role VIP ({scfg['name']}): {re_ex}")
 
     hof_ch = main_g.get_channel(HALL_OF_FAME_CH_ID)
     if hof_ch:
@@ -3079,10 +3088,23 @@ async def maintain_vip_expiry_loop():
                     if expired_uids:
                         await _save_vip_ledger(main_g)
                 for uid, tot_vnd in expired_uids:
+                    removed_any = False
+                    for srv_gid, scfg in SERVER_CONFIGS.items():
+                        g_srv = bot.get_guild(srv_gid)
+                        rid_srv = scfg.get("vip_role_id")
+                        if not g_srv or not rid_srv:
+                            continue
+                        r_srv = g_srv.get_role(rid_srv)
+                        m_srv = g_srv.get_member(uid)
+                        if m_srv and r_srv and r_srv in m_srv.roles:
+                            try:
+                                await m_srv.remove_roles(r_srv, reason="Hết thời hạn gói Nhà Tài Trợ Vàng")
+                                removed_any = True
+                            except Exception:
+                                pass
                     m = main_g.get_member(uid)
-                    if m and vip_role and vip_role in m.roles:
+                    if removed_any and m:
                         try:
-                            await m.remove_roles(vip_role, reason="Hết thời hạn gói Nhà Tài Trợ Vàng")
                             log_event(f"⏰ Đã gỡ Role VIP hết hạn của {m.name} (tổng tích lũy {tot_vnd:,}đ)")
                             rem = max(0, 200000 - tot_vnd)
                             await m.send(
@@ -3282,20 +3304,23 @@ async def rotate_daily_pins_24h(force: bool = False) -> dict:
             new_pins = {g["daily_pin"] for g in rotated_games if g.get("daily_pin")}
             _protected_pins_set = set(_BASE_MASTER_PINS.values()) | _protected_pins_set | new_pins
 
-            # 1. Update #⭐・kho-pin-nhà-tài-trợ on main server
-            main_g = bot.get_guild(GUILD_ID)
-            if main_g:
-                vip_ch = main_g.get_channel(VIP_PIN_CH_ID)
+            # 1. Update #⭐・kho-pin-nhà-tài-trợ across ALL configured Discord servers
+            vip_lines = [
+                "# ⭐ KHO MÃ PIN ĐẶC QUYỀN — NHÀ TÀI TRỢ VÀNG",
+                f"Cảm ơn anh em đã mời Gấu ly cà phê ấm lòng! Dưới đây là **Mã PIN 5 Số trực tiếp (0% quảng cáo)** của toàn bộ game trên **Gấu Cloud Launcher** *(🔄 Đã tự động đổi mới ngày `{res['time_str']}` — Mã PIN cũ còn hiệu lực ân hạn 2 tiếng)*:",
+                "",
+            ]
+            for g in sorted(rotated_games, key=lambda x: x["title"].lower()):
+                vip_lines.append(f"> ### 🎮 **{g['title']}** *({g['version']})* ➔ Mã PIN Hôm Nay: **`{g['daily_pin']}`**")
+            vip_lines.append("\n❤️ *Chúc anh em Nhà Tài Trợ Vàng chơi game thật vui vẻ!*")
+            vip_body = "\n".join(vip_lines)
+            for srv_gid, scfg in SERVER_CONFIGS.items():
+                g_srv = bot.get_guild(srv_gid)
+                vp_id = scfg.get("vip_pin_ch_id")
+                if not g_srv or not vp_id:
+                    continue
+                vip_ch = g_srv.get_channel(vp_id)
                 if vip_ch:
-                    vip_lines = [
-                        "# ⭐ KHO MÃ PIN ĐẶC QUYỀN — NHÀ TÀI TRỢ VÀNG",
-                        f"Cảm ơn anh em đã mời Gấu ly cà phê ấm lòng! Dưới đây là **Mã PIN 5 Số trực tiếp (0% quảng cáo)** của toàn bộ game trên **Gấu Cloud Launcher** *(🔄 Đã tự động đổi mới ngày `{res['time_str']}` — Mã PIN cũ còn hiệu lực ân hạn 2 tiếng)*:",
-                        "",
-                    ]
-                    for g in sorted(rotated_games, key=lambda x: x["title"].lower()):
-                        vip_lines.append(f"> ### 🎮 **{g['title']}** *({g['version']})* ➔ Mã PIN Hôm Nay: **`{g['daily_pin']}`**")
-                    vip_lines.append("\n❤️ *Chúc anh em Nhà Tài Trợ Vàng chơi game thật vui vẻ!*")
-                    vip_body = "\n".join(vip_lines)
                     existing_v = None
                     async for m in vip_ch.history(limit=10):
                         if m.author.id == bot.user.id and "KHO MÃ PIN ĐẶC QUYỀN" in (m.content or ""):
@@ -4900,12 +4925,13 @@ async def on_message(message: discord.Message):
                         note_src="AI Vision duyệt tự động",
                     )
                     if grant_res["vip_granted"]:
+                        local_vip_pin_id = get_server_cfg(message.guild.id).get("vip_pin_ch_id") or VIP_PIN_CH_ID
                         await status_msg.edit(
                             content=(
                                 f"🎉 **XÁC THỰC BIÊN LAI THÀNH CÔNG! CHÚC MỪNG {member.mention} ĐÃ NHẬN NHÀ TÀI TRỢ VÀNG ⭐!** ❤️\n\n"
                                 f"• ☕ **Số tiền vừa ghi nhận:** **`{amount_str}`** *(Tổng tích lũy: **`{grant_res['total_vnd']:,}đ / 200.000đ`**)*\n"
                                 f"• 👑 **Thời hạn VIP:** **`{grant_res['exp_disp']}`**\n"
-                                f"• 🔑 **Kho Mã PIN 0s Chờ:** **<#{VIP_PIN_CH_ID}>** *(Server chính Việt Hóa Gấu Công Tâm: https://discord.gg/Ac7mcqCuPB)*\n"
+                                f"• 🔑 **Kho Mã PIN 0s Chờ:** **<#{local_vip_pin_id}>** *(và <#{VIP_PIN_CH_ID}> ở Server chính)*\n"
                                 f"• 🆘 **Phòng Kín 1-1 Nhờ Tìm Game & Thẻ Vàng Đề Xuất:** Đã mở khóa!\n"
                                 f"• 🏆 **Đã vinh danh tại:** **<#{HALL_OF_FAME_CH_ID}>**\n\n"
                                 f"❤️ *Thay mặt Studio Gấu Công Tâm cảm ơn tấm lòng của bạn rất nhiều!*"
