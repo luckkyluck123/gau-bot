@@ -846,8 +846,8 @@ FAQ_PATTERNS = [
 
         "reply": (
             "🔑 **Chào bạn!** Mã PIN 5 số để kích hoạt game trên Launcher được gắn ngay trong bài viết của từng tựa game tại kênh <#1565547970487783475> nha!\n"
-            "💡 **Mẹo lấy PIN nhanh trong 30 giây (không bị ẩn nút):** Khi mở link lấy PIN, bạn nhớ **tắt VPN** và **tắt Chặn quảng cáo (biểu tượng cái khiên 🛡️ AdBlock ở góc phải thanh địa chỉ Opera GX / Brave / Cốc Cốc)** rồi bấm **`F5`** tải lại trang là sẽ thấy nút màu đỏ **`[L4M GET CODE]`** ở cuối trang web ngay!\n"
-            "⭐ *(Hoặc bạn có thể ủng hộ Gấu ly cà phê tại <#1565547962548092989> để nhận Role **Nhà Tài Trợ Vàng ⭐** mở khóa vĩnh viễn <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0% quảng cáo nhé!)*"
+            "💡 **Cách lấy PIN siêu nhanh (chỉ 10 giây):** Bấm vào link lấy PIN trong bài viết của game bạn muốn tải ➔ chờ đúng **10 giây** trên trang ➔ bấm **`[🔓 HIỆN MÃ PIN 5 SỐ NGAY]`** là có ngay Mã PIN 5 số *(không giới hạn số game tải trong ngày)*!\n"
+            "⭐ *(Hoặc bạn có thể ủng hộ Gấu ly cà phê tại <#1565547962548092989> để nhận Role **Nhà Tài Trợ Vàng ⭐** mở khóa vĩnh viễn <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0 giây chờ nhé!)*"
         )
 
 
@@ -2917,26 +2917,13 @@ def _make_pin_envelope(game_id: str, daily_pin: str, master_pin: str, exp_unix: 
 
 
 def _create_link4m_sync(display_title: str, daily_pin: str) -> str:
-    l4m_tok = _get_l4m_token()
-    if not l4m_tok or not daily_pin:
+    if not daily_pin:
         return ""
     raw = json.dumps({"g": display_title, "p": daily_pin}, ensure_ascii=False).encode("utf-8")
     key = b"GAU_STUDIO_2026_SECRET"
     xored = bytes(b ^ key[i % len(key)] for i, b in enumerate(raw))
     h_tok = base64.urlsafe_b64encode(xored).decode("ascii").rstrip("=")
-    dest_url = f"https://luckkyluck123.github.io/GauLauncher-Data/pin.html#{h_tok}"
-    api_url = f"https://link4m.co/api-shorten/v2?api={l4m_tok}&url={urllib.parse.quote(dest_url, safe='')}"
-    for attempt in range(2):
-        try:
-            req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=18) as resp:
-                res = json.loads(resp.read().decode("utf-8"))
-            s_url = str(res.get("shortenedUrl") or "").strip()
-            if s_url:
-                return s_url
-        except Exception as e:
-            log_event(f"-> Cảnh báo tạo Link4m cho '{display_title}' (lần {attempt + 1}): {e}")
-    return ""
+    return f"https://luckkyluck123.github.io/pin.html#{h_tok}"
 
 
 def _github_rotate_catalog_sync(force: bool = False) -> dict:
@@ -3107,7 +3094,7 @@ async def rotate_daily_pins_24h(force: bool = False) -> dict:
                         starter = await t.fetch_message(t.id)
                         old_c = starter.content or ""
                         new_c = re.sub(
-                            r"https://link4m\.(?:net|org|co|com)/[A-Za-z0-9_-]+",
+                            r"https://(?:link4m\.(?:net|org|co|com)/[A-Za-z0-9_-]+|luckkyluck123\.github\.io/(?:GauLauncher-Data/)?pin\.html[^\s)\]]*)",
                             matched_g["link4m_url"],
                             old_c,
                         )
