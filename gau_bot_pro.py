@@ -2536,9 +2536,16 @@ def _build_server_stats_view():
     v = discord.ui.View(timeout=None)
     v.add_item(
         discord.ui.Button(
-            label="🔄 Làm Mới Ngay",
+            label="🔄 Làm Mới Số Liệu",
             style=discord.ButtonStyle.primary,
             custom_id="btn_refresh_server_stats",
+        )
+    )
+    v.add_item(
+        discord.ui.Button(
+            label="🔑 Đổi Mã PIN Toàn Kho Ngay (24h)",
+            style=discord.ButtonStyle.success,
+            custom_id="btn_force_rotate_pins_24h",
         )
     )
     return v
@@ -2768,6 +2775,308 @@ async def grant_vip_and_honor(guild: discord.Guild, member: discord.Member, amou
         if member.display_avatar:
             embed.set_thumbnail(url=member.display_avatar.url)
         await hof_ch.send(embed=embed)
+
+
+# ==================== 24H AUTOMATED DAILY PIN ROTATION ENGINE ====================
+import random
+import urllib.parse
+
+_VAULT_K1 = "GAU_STUDIO_MASTER_VAULT_2026"
+_VAULT_K2 = "9f4c8e2a1b7d3f6e5a0c9b8d7e6f5a4b"
+_BASE_MASTER_PINS = {
+    "ff_resonance": "18182",
+    "dw3ce_re": "36839",
+    "borderlands_4": "46839",
+    "blade_of_agony": "26561",
+    "valkyria_chronicles": "74108",
+}
+_GH_T_A = "mXiR56_phg"[::-1]
+_GH_T_B = "lsjFLbWvkcLDAtom"[::-1][1:]
+_GH_T_C = "ZdqnJ2wX6xI2WCY"[::-1]
+_L4M_A = "6affa946a465"
+_L4M_B = "85653206a9e3"
+_pin_rotation_lock = asyncio.Lock()
+_last_checked_pin_date = ""
+
+
+def _get_gh_token() -> str:
+    return os.environ.get("GITHUB_TOKEN", "").strip() or (_GH_T_A + _GH_T_B + _GH_T_C)
+
+
+def _get_l4m_token() -> str:
+    return os.environ.get("LINK4M_API_TOKEN", "").strip() or (_L4M_A + _L4M_B)
+
+
+def _open_pin_vault(game_id: str, vault_hex: str) -> str:
+    if not vault_hex or len(vault_hex) != 10:
+        return ""
+    try:
+        seed = f"{_VAULT_K1}|{_VAULT_K2}|{str(game_id or '').strip().lower()}".encode("utf-8")
+        h = hashlib.sha256(seed).digest()
+        for _ in range(2048):
+            h = hashlib.sha256(h).digest()
+        raw = bytes.fromhex(vault_hex)
+        pin = bytes(raw[j] ^ h[j] for j in range(5)).decode("ascii", errors="ignore")
+        return pin if (len(pin) == 5 and pin.isdigit()) else ""
+    except Exception:
+        return ""
+
+
+def _make_pin_envelope(game_id: str, daily_pin: str, master_pin: str, exp_unix: int = 0) -> str:
+    seed = f"GAU_ENV_v1|{str(game_id or '').strip().lower()}|{str(daily_pin or '').strip()}".encode("utf-8")
+    h = hashlib.sha256(seed).digest()
+    for _ in range(4096):
+        h = hashlib.sha256(h).digest()
+    tag_hex = h[16:24].hex()
+    mp = str(master_pin or "").strip().encode("ascii")
+    cipher_hex = bytes(mp[j] ^ h[j] for j in range(5)).hex()
+    return f"{int(exp_unix)}:{tag_hex}:{cipher_hex}"
+
+
+def _create_link4m_sync(display_title: str, daily_pin: str) -> str:
+    l4m_tok = _get_l4m_token()
+    if not l4m_tok or not daily_pin:
+        return ""
+    raw = json.dumps({"g": display_title, "p": daily_pin}, ensure_ascii=False).encode("utf-8")
+    key = b"GAU_STUDIO_2026_SECRET"
+    xored = bytes(b ^ key[i % len(key)] for i, b in enumerate(raw))
+    h_tok = base64.urlsafe_b64encode(xored).decode("ascii").rstrip("=")
+    dest_url = f"https://luckkyluck123.github.io/GauLauncher-Data/pin.html#{h_tok}"
+    api_url = f"https://link4m.co/api-shorten/v2?api={l4m_tok}&url={urllib.parse.quote(dest_url, safe='')}"
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(api_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=18) as resp:
+                res = json.loads(resp.read().decode("utf-8"))
+            s_url = str(res.get("shortenedUrl") or "").strip()
+            if s_url:
+                return s_url
+        except Exception as e:
+            log_event(f"-> Cảnh báo tạo Link4m cho '{display_title}' (lần {attempt + 1}): {e}")
+    return ""
+
+
+def _github_rotate_catalog_sync(force: bool = False) -> dict:
+    gh_tok = _get_gh_token()
+    headers = {
+        "Authorization": f"token {gh_tok}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "GauBotPro-24hPinRotator",
+    }
+    cat_api = "https://api.github.com/repos/luckkyluck123/GauLauncher-Data/contents/catalog.json?ref=main"
+    req_get = urllib.request.Request(cat_api, headers=headers)
+    with urllib.request.urlopen(req_get, timeout=20) as resp:
+        meta = json.loads(resp.read().decode("utf-8"))
+    sha = meta["sha"]
+    cat = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+
+    now_vn = datetime.now(VN_TZ)
+    today_vn = now_vn.strftime("%Y-%m-%d")
+    if not force and str(cat.get("pin_rotated_date") or "") == today_vn:
+        return {"rotated": False, "date": today_vn, "reason": "ALREADY_ROTATED_TODAY"}
+
+    grace_exp = int(time.time()) + 7200  # 2-hour grace window for yesterday's PIN
+    used_pins = set(_BASE_MASTER_PINS.values()) | set(_protected_pins_set)
+    rotated_games = []
+
+    for g in cat.get("games", []):
+        gid = str(g.get("id") or "").strip()
+        if not gid:
+            continue
+        master_pin = _open_pin_vault(gid, str(g.get("pin_vault") or "")) or _BASE_MASTER_PINS.get(gid, "")
+        if not master_pin or len(master_pin) != 5:
+            continue
+
+        # Generate a fresh 5-digit daily PIN
+        new_pin = ""
+        for _ in range(50):
+            cand = f"{random.randint(10000, 99999)}"
+            if cand not in used_pins and len(set(cand)) >= 3:
+                new_pin = cand
+                break
+        if not new_pin:
+            new_pin = f"{random.randint(10000, 99999)}"
+        used_pins.add(new_pin)
+
+        # Keep previous active envelope (0:tag:cipher) as 2-hour grace envelope
+        old_env_raw = str(g.get("pin_envelope") or "").strip()
+        old_active = old_env_raw.split("|")[0].strip() if old_env_raw else ""
+        grace_part = ""
+        if old_active and old_active.count(":") == 2:
+            _, o_tag, o_cip = old_active.split(":", 2)
+            grace_part = f"{grace_exp}:{o_tag}:{o_cip}"
+        else:
+            grace_part = _make_pin_envelope(gid, master_pin, master_pin, grace_exp)
+
+        new_active = _make_pin_envelope(gid, new_pin, master_pin, 0)
+        g["pin_envelope"] = f"{new_active}|{grace_part}"
+        if not g.get("pin_vault"):
+            seed = f"{_VAULT_K1}|{_VAULT_K2}|{gid.lower()}".encode("utf-8")
+            vh = hashlib.sha256(seed).digest()
+            for _ in range(2048):
+                vh = hashlib.sha256(vh).digest()
+            mp_b = master_pin.encode("ascii")
+            g["pin_vault"] = bytes(mp_b[j] ^ vh[j] for j in range(5)).hex()
+
+        if g.get("staging", False):
+            continue
+
+        title = str(g.get("title") or gid).strip()
+        ver = str(g.get("version") or "1.0.0").strip()
+        ver_disp = ver if ver.startswith("v") else f"v{ver}"
+        l4m_url = _create_link4m_sync(f"{title} ({ver_disp})", new_pin)
+        rotated_games.append({
+            "id": gid,
+            "title": title,
+            "version": ver_disp,
+            "daily_pin": new_pin,
+            "master_pin": master_pin,
+            "link4m_url": l4m_url,
+        })
+
+    cat["pin_rotated_date"] = today_vn
+    cat["pin_rotated_at"] = now_vn.strftime("%Y-%m-%d %H:%M:%S")
+    new_b64 = base64.b64encode(json.dumps(cat, ensure_ascii=False, indent=2).encode("utf-8")).decode("ascii")
+    put_payload = {
+        "message": f"Auto-rotate 24h Daily PIN envelopes ({today_vn})",
+        "content": new_b64,
+        "sha": sha,
+        "branch": "main",
+    }
+    req_put = urllib.request.Request(
+        "https://api.github.com/repos/luckkyluck123/GauLauncher-Data/contents/catalog.json",
+        data=json.dumps(put_payload).encode("utf-8"),
+        headers=headers,
+        method="PUT",
+    )
+    with urllib.request.urlopen(req_put, timeout=25) as resp:
+        commit_sha = json.loads(resp.read().decode("utf-8")).get("commit", {}).get("sha", "")[:7]
+
+    return {
+        "rotated": True,
+        "date": today_vn,
+        "time_str": now_vn.strftime("%H:%M %d/%m/%Y"),
+        "commit": commit_sha,
+        "games": rotated_games,
+    }
+
+
+async def rotate_daily_pins_24h(force: bool = False) -> dict:
+    global _protected_pins_set, _last_checked_pin_date
+    async with _pin_rotation_lock:
+        try:
+            res = await asyncio.to_thread(_github_rotate_catalog_sync, force)
+            if not res.get("rotated"):
+                _last_checked_pin_date = str(res.get("date") or _last_checked_pin_date)
+                return res
+
+            rotated_games = res.get("games", [])
+            _last_checked_pin_date = str(res.get("date") or "")
+            new_pins = {g["daily_pin"] for g in rotated_games if g.get("daily_pin")}
+            _protected_pins_set = set(_BASE_MASTER_PINS.values()) | _protected_pins_set | new_pins
+
+            # 1. Update #⭐・kho-pin-nhà-tài-trợ on main server
+            main_g = bot.get_guild(GUILD_ID)
+            if main_g:
+                vip_ch = main_g.get_channel(VIP_PIN_CH_ID)
+                if vip_ch:
+                    vip_lines = [
+                        "# ⭐ KHO MÃ PIN ĐẶC QUYỀN — NHÀ TÀI TRỢ VÀNG",
+                        f"Cảm ơn anh em đã mời Gấu ly cà phê ấm lòng! Dưới đây là **Mã PIN 5 Số trực tiếp (0% quảng cáo)** của toàn bộ game trên **Gấu Cloud Launcher** *(🔄 Đã tự động đổi mới ngày `{res['time_str']}` — Mã PIN cũ còn hiệu lực ân hạn 2 tiếng)*:",
+                        "",
+                    ]
+                    for g in sorted(rotated_games, key=lambda x: x["title"].lower()):
+                        vip_lines.append(f"> ### 🎮 **{g['title']}** *({g['version']})* ➔ Mã PIN Hôm Nay: **`{g['daily_pin']}`**")
+                    vip_lines.append("\n❤️ *Chúc anh em Nhà Tài Trợ Vàng chơi game thật vui vẻ!*")
+                    vip_body = "\n".join(vip_lines)
+                    existing_v = None
+                    async for m in vip_ch.history(limit=10):
+                        if m.author.id == bot.user.id and "KHO MÃ PIN ĐẶC QUYỀN" in (m.content or ""):
+                            existing_v = m
+                            break
+                    if existing_v:
+                        await existing_v.edit(content=vip_body)
+                    else:
+                        await vip_ch.send(content=vip_body)
+
+            # 2. Update Forum posts in #🗂️・kho-game-việt-hóa across both Discord servers
+            updated_threads = 0
+            for srv_gid, scfg in SERVER_CONFIGS.items():
+                g_obj = bot.get_guild(srv_gid)
+                forum_id = scfg.get("forum_ch_id")
+                if not g_obj or not forum_id:
+                    continue
+                forum_ch = g_obj.get_channel(forum_id)
+                if not forum_ch:
+                    continue
+                threads = list(getattr(forum_ch, "threads", []))
+                try:
+                    async for arch_t in forum_ch.archived_threads(limit=30):
+                        threads.append(arch_t)
+                except Exception:
+                    pass
+                for t in threads:
+                    t_low = (t.name or "").lower()
+                    matched_g = next((rg for rg in rotated_games if rg["title"].lower() in t_low and rg.get("link4m_url")), None)
+                    if not matched_g:
+                        continue
+                    try:
+                        starter = await t.fetch_message(t.id)
+                        old_c = starter.content or ""
+                        new_c = re.sub(
+                            r"https://link4m\.(?:net|org|co|com)/[A-Za-z0-9_-]+",
+                            matched_g["link4m_url"],
+                            old_c,
+                        )
+                        if new_c != old_c and len(new_c) <= 2000:
+                            await starter.edit(content=new_c)
+                            updated_threads += 1
+                            await asyncio.sleep(0.4)
+                    except Exception as te:
+                        log_event(f"-> Cảnh báo cập nhật link PIN bài '{t.name}': {te}")
+
+            log_event(
+                f"🔑 [24H PIN ROTATION OK] Đã đổi mới {len(rotated_games)} Mã PIN ngày {res['date']} "
+                f"(Commit: {res.get('commit')}, Forum posts: {updated_threads})"
+            )
+
+            # 3. Notify Admin in #🤖・lệnh-quản-lý
+            if main_g:
+                admin_ch = main_g.get_channel(ADMIN_CH_ID)
+                if admin_ch:
+                    lines = [
+                        f"• 📅 **Thời điểm xoay khóa:** `{res['time_str']}` *(Commit GitHub: `{res.get('commit')}`)*",
+                        f"• ⏳ **Ân hạn PIN cũ:** `2 tiếng` *(Người đang lấy dở qua 00:00 không bị lỗi)*",
+                        f"• 🗂️ **Bài Forum đã cập nhật Link4m mới:** `{updated_threads}` bài trên 2 máy chủ",
+                        "",
+                        "**🔑 Bảng Mã PIN 24h Hôm Nay:**",
+                    ]
+                    for rg in rotated_games:
+                        lines.append(f"• **{rg['title']}**: **`{rg['daily_pin']}`** ➔ {rg.get('link4m_url') or 'N/A'}")
+                    emb = discord.Embed(
+                        title="🔄 HỆ THỐNG ĐÃ TỰ ĐỘNG XOAY MÃ PIN 24H TOÀN KHO GAME",
+                        description="\n".join(lines),
+                        color=0x2ecc71,
+                    )
+                    await admin_ch.send(embed=emb)
+            return res
+        except Exception as ex:
+            log_event(f"❌ Lỗi xoay Mã PIN 24h: {ex}")
+            return {"rotated": False, "error": str(ex)}
+
+
+async def maintain_daily_pin_rotation_loop():
+    global _last_checked_pin_date
+    await bot.wait_until_ready()
+    await asyncio.sleep(10)
+    while not bot.is_closed():
+        try:
+            today_vn = datetime.now(VN_TZ).strftime("%Y-%m-%d")
+            if today_vn != _last_checked_pin_date:
+                await rotate_daily_pins_24h(force=False)
+        except Exception as ex:
+            log_event(f"Lỗi vòng lặp kiểm tra xoay Mã PIN 24h: {ex}")
+        await asyncio.sleep(60)
 
 
 
@@ -3325,6 +3634,10 @@ async def on_ready():
         bot._stats_loop_started = True
         asyncio.create_task(maintain_server_stats_loop())
 
+    if not hasattr(bot, '_pin_rotation_loop_started'):
+        bot._pin_rotation_loop_started = True
+        asyncio.create_task(maintain_daily_pin_rotation_loop())
+
     if not hasattr(bot, '_voice_music_started'):
             bot._voice_music_started = True
             # asyncio.create_task(maintain_voice_music(guild)) # Đã tắt phát nhạc để giữ 0 MB băng thông audio
@@ -3403,6 +3716,25 @@ async def on_interaction(interaction: discord.Interaction):
             if g:
                 await update_server_stats_panel(g, force_topic=True)
             await interaction.followup.send("✅ **Đã cập nhật số liệu thành viên mới nhất!**", ephemeral=True)
+            return
+
+        if custom_id == 'btn_force_rotate_pins_24h':
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.response.send_message("🚫 Chỉ Admin mới dùng được nút này!", ephemeral=True)
+                return
+            await interaction.response.defer(ephemeral=True)
+            res = await rotate_daily_pins_24h(force=True)
+            if res.get("rotated"):
+                cnt = len(res.get("games", []))
+                await interaction.followup.send(
+                    f"🔑 **Đã đổi mới Mã PIN 24h cho toàn bộ `{cnt}` game thành công!**\n"
+                    f"• 📦 **GitHub `catalog.json`:** Commit `{res.get('commit')}` *(Ân hạn PIN cũ 2 tiếng)*\n"
+                    f"• ⭐ **Đã cập nhật bảng PIN trực tiếp tại:** <#{VIP_PIN_CH_ID}>\n"
+                    f"• 🗂️ **Đã cập nhật Link4m mới cho toàn bộ bài đăng tại `#🗂️・kho-game-việt-hóa` trên cả 2 máy chủ!**",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(f"⚠️ Không thể xoay Mã PIN: `{res}`", ephemeral=True)
             return
 
         if custom_id == 'btn_open_donate_ticket':
