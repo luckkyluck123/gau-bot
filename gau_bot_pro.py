@@ -177,6 +177,10 @@ GUIDE_CHANNEL_ID = 1566598834061320355
 
 ADMIN_CH_ID = 1564476312926556330 # lệnh-quản-lý
 STATS_CH_ID = 1573147958138900620 # 📊・thống-kê-máy-chủ
+ROLE_VIP_ID = 1564467370758639699 # Nhà Tài Trợ Vàng ⭐
+COFFEE_CH_ID = 1565547962548092989 # ☕・ủng-hộ-gấu-ly-cafe
+VIP_PIN_CH_ID = 1573158585095954535 # ⭐・kho-pin-nhà-tài-trợ
+HALL_OF_FAME_CH_ID = 1566603377897636015 # 🏆・bảng-vàng-tri-ân
 
 SERVER_CONFIGS = {
     1564454825708490867: {
@@ -2662,9 +2666,104 @@ async def maintain_server_stats_loop():
             g = bot.get_guild(GUILD_ID)
             if g:
                 await update_server_stats_panel(g)
+                await refresh_protected_pins_cache(g)
         except Exception as ex:
             log_event(f"Lỗi vòng lặp thống kê máy chủ: {ex}")
         await asyncio.sleep(300)
+
+
+# ==================== AUTO-DONATE AI VISION & ANTI-PIN-LEAK ====================
+import base64
+import hashlib
+import urllib.request
+
+_GK_PFX = "AQ.Ab8RN6"
+_GK_SFXS = [
+    "JKaz4xI9AM0km11FzNMlnNvah4e1z4V2HIrVnpD9SzRQ",
+    "LprcBNyuZF5WC4spYK-qh2Di5dhln5O4r-qiroJlG7qw",
+    "LZX0c6LEqe03Uiw8XQ0aktIZHjRA8zWUS4DTNYXPhmlA",
+    "KmGgw-EmtcbmWHoeixCqtg4lW1nbyulU0d-1DFGz-C9g",
+]
+_used_donate_hashes = set()
+_protected_pins_set = {"74108"}
+
+
+async def refresh_protected_pins_cache(guild):
+    global _protected_pins_set
+    try:
+        vip_ch = guild.get_channel(VIP_PIN_CH_ID)
+        if not vip_ch:
+            return
+        pins = set(_protected_pins_set)
+        async for m in vip_ch.history(limit=5):
+            for p in re.findall(r"\b(\d{5})\b", m.content or ""):
+                pins.add(p)
+        _protected_pins_set = pins
+    except Exception:
+        pass
+
+
+def _verify_receipt_sync(img_bytes: bytes, mime_type: str) -> dict:
+    b64_img = base64.b64encode(img_bytes).decode("ascii")
+    prompt = (
+        "Bạn là hệ thống kiểm định biên lai chuyển khoản tự động của Studio Gấu Công Tâm. "
+        "Hãy đọc kỹ hình ảnh này và kiểm tra:\n"
+        "1. Đây có phải màn hình/biên lai chuyển khoản ngân hàng hoặc ví điện tử ĐÃ THÀNH CÔNG không? "
+        "(Nếu chỉ là ảnh mã QR trống chưa chuyển, màn hình đang nhập tiền chưa bấm xác nhận, hoặc ảnh game/meme thì is_valid=false).\n"
+        "2. Người nhận / Tài khoản nhận trong ảnh có khớp với SỐ TÀI KHOẢN '102880978780' HOẶC TÊN NGƯỜI NHẬN 'TRAN THANH HIEP' / 'TRẦN THANH HIỆP' (VietinBank) không?\n"
+        "Trả về ĐÚNG 1 JSON phẳng: "
+        '{"is_valid": true/false, "amount": "số tiền kèm đơn vị VD 50.000đ", "tx_id": "mã giao dịch nếu có", "reason": "lý do ngắn gọn"}'
+    )
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inlineData": {"mimeType": mime_type or "image/jpeg", "data": b64_img}},
+            ]
+        }],
+        "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"},
+    }
+    raw_body = json.dumps(payload).encode("utf-8")
+    for sfx in _GK_SFXS:
+        k = _GK_PFX + sfx
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={k}"
+        try:
+            req = urllib.request.Request(url, data=raw_body, headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=18) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            txt = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            txt = re.sub(r"^```(?:json)?|```$", "", txt, flags=re.MULTILINE).strip()
+            res = json.loads(txt)
+            if isinstance(res, dict):
+                return res
+        except Exception as e:
+            log_event(f"-> Cảnh báo Gemini Vision key: {e}")
+            continue
+    return {"is_valid": False, "amount": "", "tx_id": "", "reason": "AI_BUSY"}
+
+
+async def grant_vip_and_honor(guild: discord.Guild, member: discord.Member, amount_str: str = "Tùy tâm ❤️", note_src: str = "Tự động duyệt Bill AI"):
+    vip_role = guild.get_role(ROLE_VIP_ID)
+    if vip_role and vip_role not in member.roles:
+        await member.add_roles(vip_role, reason=f"Ủng hộ Gấu Cà Phê ({amount_str}) - {note_src}")
+    hof_ch = guild.get_channel(HALL_OF_FAME_CH_ID)
+    if hof_ch:
+        now_vn = datetime.now(VN_TZ).strftime("%d/%m/%Y %H:%M")
+        amt_disp = amount_str.strip() if amount_str and amount_str.strip() else "Ly Cà Phê Ấm Lòng ☕"
+        embed = discord.Embed(
+            title="🌟 VINH DANH NHÀ TÀI TRỢ VÀNG MỚI!",
+            description=(
+                f"Xin trân trọng cảm ơn Mạnh Thường Quân {member.mention} (**{member.display_name}**) "
+                f"đã tiếp lửa ủng hộ **Studio Gấu Công Tâm**!\n\n"
+                f"• ☕ **Mức ủng hộ:** **`{amt_disp}`**\n"
+                f"• 👑 **Danh hiệu:** **Nhà Tài Trợ Vàng ⭐** *(Vĩnh viễn)*\n"
+                f"• 🕒 **Thời gian:** `{now_vn}`"
+            ),
+            color=0xf1c40f,
+        )
+        if member.display_avatar:
+            embed.set_thumbnail(url=member.display_avatar.url)
+        await hof_ch.send(embed=embed)
 
 
 
@@ -3300,6 +3399,98 @@ async def on_interaction(interaction: discord.Interaction):
             if g:
                 await update_server_stats_panel(g, force_topic=True)
             await interaction.followup.send("✅ **Đã cập nhật số liệu thành viên mới nhất!**", ephemeral=True)
+            return
+
+        if custom_id == 'btn_open_donate_ticket':
+            await interaction.response.defer(ephemeral=True)
+            guild = interaction.guild
+            member = interaction.user
+            coffee_ch = guild.get_channel(COFFEE_CH_ID) if guild else None
+            if not coffee_ch:
+                await interaction.followup.send("❌ Không tìm thấy kênh ủng hộ!", ephemeral=True)
+                return
+            t_name = f"☕・[VIP]-{member.name}"[:40]
+            try:
+                thread = await coffee_ch.create_thread(
+                    name=t_name,
+                    type=discord.ChannelType.private_thread,
+                    auto_archive_duration=1440,
+                    invitable=False,
+                )
+                await thread.add_user(member)
+            except Exception as e:
+                await interaction.followup.send(f"❌ Không thể mở phòng gửi bill riêng: {e}", ephemeral=True)
+                return
+
+            close_v = discord.ui.View(timeout=None)
+            close_v.add_item(discord.ui.Button(
+                label="🔒 Đóng Phòng Này",
+                style=discord.ButtonStyle.secondary,
+                custom_id="btn_close_install_help_ticket",
+            ))
+            await thread.send(
+                f"🌟 **PHÒNG NHẬN ROLE NHÀ TÀI TRỢ VÀNG TỰ ĐỘNG 24/7**\n\n"
+                f"Chào {member.mention}! Cảm ơn bạn đã ủng hộ Gấu ly cà phê ấm lòng ❤️\n"
+                f"👉 **Bạn hãy gửi (hoặc bấm `Ctrl + V` dán) ảnh chụp màn hình biên lai chuyển khoản thành công** "
+                f"tới VietinBank `102880978780` (`TRAN THANH HIEP`) vào ngay phòng kín này.\n\n"
+                f"🤖 **Ngay khi bạn gửi ảnh lên, Bot AI của Gấu sẽ tự động đọc bill trong 3 giây để:**\n"
+                f"1️⃣ Cấp ngay Role **Nhà Tài Trợ Vàng ⭐** (vĩnh viễn).\n"
+                f"2️⃣ Mở khóa ngay phòng **<#{VIP_PIN_CH_ID}>** (xem thẳng toàn bộ Mã PIN 5 số không quảng cáo).\n"
+                f"3️⃣ Vinh danh bạn lên **<#{HALL_OF_FAME_CH_ID}>**!",
+                view=close_v,
+            )
+            link_v = discord.ui.View()
+            link_v.add_item(discord.ui.Button(
+                label="👉 Bấm Vào Đây Để Dán Ảnh Bill Chuyển Khoản",
+                url=thread.jump_url,
+                style=discord.ButtonStyle.link,
+            ))
+            await interaction.followup.send(
+                f"✅ **Đã mở phòng riêng tư nhận Bill cho bạn!**\n👉 **[BẤM VÀO ĐÂY ĐỂ GỬI ẢNH BILL & NHẬN ROLE VIP TỰ ĐỘNG]({thread.jump_url})**",
+                view=link_v,
+                ephemeral=True,
+            )
+            return
+
+        if custom_id.startswith('btn_grant_vip_'):
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.response.send_message("🚫 Chỉ Admin mới dùng được nút này!", ephemeral=True)
+                return
+            await interaction.response.defer(ephemeral=True)
+            target_uid = int(custom_id.replace('btn_grant_vip_', '').strip())
+            guild = interaction.guild
+            target_m = guild.get_member(target_uid)
+            if not target_m:
+                try:
+                    target_m = await guild.fetch_member(target_uid)
+                except Exception:
+                    target_m = None
+            if not target_m:
+                await interaction.followup.send("❌ Không tìm thấy thành viên này trong server!", ephemeral=True)
+                return
+            await grant_vip_and_honor(guild, target_m, amount_str="Ly Cà Phê Ấm Lòng ☕", note_src=f"Admin {interaction.user.name} duyệt")
+            await interaction.followup.send(f"✅ Đã cấp **Nhà Tài Trợ Vàng ⭐** và ghi Bảng Vàng cho {target_m.mention}!", ephemeral=True)
+            return
+
+        if custom_id.startswith('btn_revoke_vip_'):
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.response.send_message("🚫 Chỉ Admin mới dùng được nút này!", ephemeral=True)
+                return
+            await interaction.response.defer(ephemeral=True)
+            target_uid = int(custom_id.replace('btn_revoke_vip_', '').strip())
+            guild = interaction.guild
+            target_m = guild.get_member(target_uid)
+            if not target_m:
+                try:
+                    target_m = await guild.fetch_member(target_uid)
+                except Exception:
+                    target_m = None
+            vip_role = guild.get_role(ROLE_VIP_ID) if guild else None
+            if target_m and vip_role and vip_role in target_m.roles:
+                await target_m.remove_roles(vip_role, reason=f"Admin {interaction.user.name} thu hồi VIP")
+                await interaction.followup.send(f"🚫 Đã thu hồi Role **Nhà Tài Trợ Vàng ⭐** của {target_m.mention}!", ephemeral=True)
+            else:
+                await interaction.followup.send("ℹ️ Thành viên này hiện không có Role VIP.", ephemeral=True)
             return
 
 
@@ -3988,6 +4179,107 @@ async def on_message(message: discord.Message):
 
 
     now = time.time()
+
+    # 0A. TỰ ĐỘNG ĐỌC ẢNH BILL CHUYỂN KHOẢN TRONG PHÒNG TICKET DONATE (☕・[VIP]-...) & CẤP ROLE VIP 24/7
+    if isinstance(message.channel, discord.Thread) and message.channel.name.startswith("☕・[VIP]-") and message.attachments:
+        img_att = next(
+            (a for a in message.attachments if (a.content_type and a.content_type.startswith("image/")) or a.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))),
+            None,
+        )
+        if img_att:
+            status_msg = await message.reply("🤖 **Bot Gấu đang quét xác thực ảnh biên lai chuyển khoản... (chờ 2–3 giây nhé)**", mention_author=False)
+            try:
+                img_bytes = await img_att.read()
+                img_hash = hashlib.sha256(img_bytes).hexdigest()
+                if img_hash in _used_donate_hashes:
+                    await status_msg.edit(content="⚠️ **Ảnh biên lai này đã được sử dụng trước đó rồi!** Vui lòng gửi ảnh chụp giao dịch mới của bạn nhé.")
+                    return
+                res = await asyncio.to_thread(_verify_receipt_sync, img_bytes, img_att.content_type or "image/jpeg")
+                is_valid = bool(res.get("is_valid"))
+                amount_str = str(res.get("amount") or "Ly Cà Phê Ấm Lòng ☕").strip()
+                tx_id = str(res.get("tx_id") or "").strip()
+                reason_str = str(res.get("reason") or "").strip()
+                tx_key = f"TX_{tx_id}" if len(tx_id) >= 5 else ""
+
+                if is_valid and (not tx_key or tx_key not in _used_donate_hashes):
+                    _used_donate_hashes.add(img_hash)
+                    if tx_key:
+                        _used_donate_hashes.add(tx_key)
+                    await grant_vip_and_honor(guild, member, amount_str=amount_str, note_src="AI Vision duyệt tự động")
+                    await status_msg.edit(
+                        content=(
+                            f"🎉 **XÁC THỰC BIÊN LAI THÀNH CÔNG! CHÚC MỪNG {member.mention} ĐÃ TRỞ THÀNH NHÀ TÀI TRỢ VÀNG ⭐!** ❤️\n\n"
+                            f"• ☕ **Số tiền ghi nhận:** **`{amount_str}`**\n"
+                            f"• 👑 **Đã cấp Role:** **Nhà Tài Trợ Vàng ⭐** *(Vĩnh viễn)*\n"
+                            f"• 🔑 **Kho Mã PIN Không Quảng Cáo đã mở khóa cho bạn tại:** **<#{VIP_PIN_CH_ID}>**\n"
+                            f"• 🏆 **Đã vinh danh tên bạn tại:** **<#{HALL_OF_FAME_CH_ID}>**\n\n"
+                            f"❤️ *Thay mặt Studio Gấu Công Tâm cảm ơn tấm lòng của bạn rất nhiều!*"
+                        )
+                    )
+                    admin_ch = guild.get_channel(ADMIN_CH_ID)
+                    if admin_ch:
+                        rev_v = discord.ui.View(timeout=None)
+                        rev_v.add_item(discord.ui.Button(
+                            label="🚫 Thu Hồi Role VIP (Nếu Bill Giả)",
+                            style=discord.ButtonStyle.danger,
+                            custom_id=f"btn_revoke_vip_{member.id}",
+                        ))
+                        adm_emb = discord.Embed(
+                            title="⭐ AI ĐÃ TỰ ĐỘNG DUYỆT BILL & CẤP NHÀ TÀI TRỢ VÀNG",
+                            description=(
+                                f"• 👤 **Thành viên:** {member.mention} (`{member.name}` - ID: `{member.id}`)\n"
+                                f"• 💰 **Số tiền AI đọc:** **`{amount_str}`**\n"
+                                f"• 🧾 **Mã GD:** `{tx_id or 'N/A'}`\n"
+                                f"• 📍 **Phòng ticket:** {message.channel.mention}"
+                            ),
+                            color=0xf1c40f,
+                        )
+                        adm_emb.set_image(url=img_att.url)
+                        await admin_ch.send(embed=adm_emb, view=rev_v)
+                else:
+                    await status_msg.edit(
+                        content=(
+                            f"⏳ **Hệ thống tự động chưa đọc rõ số TK nhận `102880978780` (`TRAN THANH HIEP` - VietinBank) trong ảnh này** "
+                            f"*(Ghi chú: {reason_str or 'Ảnh mờ hoặc thiếu thông tin người nhận'})*.\n"
+                            f"👉 Bạn có thể **gửi lại ảnh chụp rõ biên lai hoàn tất giao dịch**, hoặc chờ **Bác Gấu** kiểm tra duyệt thủ công ngay nhé!"
+                        )
+                    )
+                    admin_ch = guild.get_channel(ADMIN_CH_ID)
+                    if admin_ch:
+                        man_v = discord.ui.View(timeout=None)
+                        man_v.add_item(discord.ui.Button(
+                            label="✅ Duyệt Cấp Role VIP Thủ Công",
+                            style=discord.ButtonStyle.success,
+                            custom_id=f"btn_grant_vip_{member.id}",
+                        ))
+                        adm_emb = discord.Embed(
+                            title="☕ YÊU CẦU DUYỆT BILL DONATE THỦ CÔNG",
+                            description=(
+                                f"• 👤 **Thành viên:** {member.mention} (`{member.name}`)\n"
+                                f"• ⚠️ **Lý do AI chuyển duyệt tay:** `{reason_str}`\n"
+                                f"• 📍 **Phòng ticket:** {message.channel.mention}"
+                            ),
+                            color=0xe67e22,
+                        )
+                        adm_emb.set_image(url=img_att.url)
+                        await admin_ch.send(embed=adm_emb, view=man_v)
+            except Exception as ex:
+                log_event(f"Lỗi xử lý ảnh bill donate: {ex}")
+            return
+
+    # 0B. CHỐNG LỘ MÃ PIN 5 SỐ RA KÊNH CHAT CHUNG
+    if not member.guild_permissions.administrator and message.channel.id not in (VIP_PIN_CH_ID, ADMIN_CH_ID, LOG_CH_ID):
+        nums_in_msg = set(re.findall(r"\b(\d{5})\b", content))
+        if nums_in_msg and (nums_in_msg & _protected_pins_set):
+            try:
+                await message.delete()
+                await message.channel.send(
+                    f"🔒 {member.mention} ơi, vui lòng **không chia sẻ Mã PIN cài đặt lên kênh chat chung** để ủng hộ kinh phí duy trì máy chủ cho Gấu nhé! ❤️",
+                    delete_after=8,
+                )
+            except Exception:
+                pass
+            return
 
 
 
