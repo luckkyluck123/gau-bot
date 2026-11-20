@@ -198,6 +198,7 @@ SERVER_CONFIGS = {
     },
     1560143301343060030: {
         "name": "Hantunat VH (🖥️ GAME PC)",
+        "scope_category_id": 1571817708784451585,
         "bug_ch_id": 1572078860013412422,
         "req_ch_id": 1572078864627269712,
         "guide_ch_id": 1572078846222667868,
@@ -215,6 +216,23 @@ SERVER_CONFIGS = {
 
 def get_server_cfg(guild_id):
     return SERVER_CONFIGS.get(guild_id, SERVER_CONFIGS[GUILD_ID])
+
+
+def _is_in_bot_scope(guild_id: int, channel) -> bool:
+    if guild_id == GUILD_ID:
+        return True
+    scfg = SERVER_CONFIGS.get(guild_id)
+    if not scfg:
+        return False
+    cat_limit = scfg.get("scope_category_id")
+    if not cat_limit:
+        return True
+    if not channel:
+        return False
+    ch_cat = getattr(channel, "category_id", None)
+    if not ch_cat and getattr(channel, "parent", None):
+        ch_cat = getattr(channel.parent, "category_id", None)
+    return ch_cat == cat_limit
 
 
 
@@ -4908,6 +4926,9 @@ async def on_message(message: discord.Message):
 
         return
 
+    if not _is_in_bot_scope(guild.id, message.channel):
+        return
+
 
 
 
@@ -5041,7 +5062,11 @@ async def on_message(message: discord.Message):
             return
 
     # 0B. CHỐNG LỘ MÃ PIN 5 SỐ RA KÊNH CHAT CHUNG
-    if not member.guild_permissions.administrator and message.channel.id not in (VIP_PIN_CH_ID, ADMIN_CH_ID, LOG_CH_ID):
+    _scfg_pin = get_server_cfg(guild.id)
+    _pin_exempt = {VIP_PIN_CH_ID, ADMIN_CH_ID, LOG_CH_ID}
+    if _scfg_pin.get("vip_pin_ch_id"):
+        _pin_exempt.add(_scfg_pin["vip_pin_ch_id"])
+    if not member.guild_permissions.administrator and message.channel.id not in _pin_exempt:
         nums_in_msg = set(re.findall(r"\b(\d{5})\b", content))
         if nums_in_msg and (nums_in_msg & _protected_pins_set):
             try:
@@ -5084,35 +5109,29 @@ async def on_message(message: discord.Message):
 
 
 
-        try:
+        if guild.id == GUILD_ID:
+            try:
 
 
 
-            await member.timeout(timedelta(hours=1), reason="Spam link độc hại / cờ bạc lừa đảo")
+                await member.timeout(timedelta(hours=1), reason="Spam link độc hại / cờ bạc lừa đảo")
 
 
 
-        except:
+            except:
 
 
 
-            pass
+                pass
 
 
 
-        await message.channel.send(
-
-
-
-            f"⚠️ **CẢNH BÁO BẢO MẬT:** {member.mention} đã bị tạm khóa chat 1 giờ do gửi tin nhắn chứa nội dung cờ bạc/liên kết độc hại!",
-
-
-
-            delete_after=10
-
-
-
+        _phish_msg = (
+            f"⚠️ **CẢNH BÁO BẢO MẬT:** {member.mention} đã bị tạm khóa chat 1 giờ do gửi tin nhắn chứa nội dung cờ bạc/liên kết độc hại!"
+            if guild.id == GUILD_ID
+            else f"⚠️ **CẢNH BÁO BẢO MẬT:** Đã xóa tin nhắn của {member.mention} do chứa liên kết nghi vấn cờ bạc/độc hại!"
         )
+        await message.channel.send(_phish_msg, delete_after=10)
 
 
 
@@ -5148,11 +5167,11 @@ async def on_message(message: discord.Message):
 
 
 
-    # 2. Chặn tag @everyone & @here
+    # 2. Chặn tag @everyone & @here (chỉ áp dụng tại Server chính của Gấu)
 
 
 
-    if ('@everyone' in content or '@here' in content) and not member.guild_permissions.administrator:
+    if guild.id == GUILD_ID and ('@everyone' in content or '@here' in content) and not member.guild_permissions.administrator:
 
 
 
@@ -5236,8 +5255,8 @@ async def on_message(message: discord.Message):
 
 
 
-    # 3. Chống spam chat đa tầng (Rate-limit, Duplicate Spam, Emoji Flood, Xóa sạch chuỗi spam & Timeout)
-    if not member.guild_permissions.administrator and not member.guild_permissions.manage_messages:
+    # 3. Chống spam chat đa tầng (chỉ áp dụng tại Server chính của Gấu, không tự ý khóa mõm thành viên bên Server đối tác)
+    if guild.id == GUILD_ID and not member.guild_permissions.administrator and not member.guild_permissions.manage_messages:
         user_id = member.id
         if user_id not in spam_tracker or isinstance(spam_tracker[user_id], list):
             spam_tracker[user_id] = {
