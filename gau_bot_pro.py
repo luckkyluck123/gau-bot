@@ -3409,7 +3409,7 @@ async def on_interaction(interaction: discord.Interaction):
             await interaction.response.defer(ephemeral=True)
             guild = interaction.guild
             member = interaction.user
-            coffee_ch = guild.get_channel(COFFEE_CH_ID) if guild else None
+            coffee_ch = interaction.channel if isinstance(interaction.channel, discord.TextChannel) else (guild.get_channel(COFFEE_CH_ID) if guild else None)
             if not coffee_ch:
                 await interaction.followup.send("❌ Không tìm thấy kênh ủng hộ!", ephemeral=True)
                 return
@@ -3439,8 +3439,8 @@ async def on_interaction(interaction: discord.Interaction):
                 f"tới VietinBank `102880978780` (`TRAN THANH HIEP`) vào ngay phòng kín này.\n\n"
                 f"🤖 **Ngay khi bạn gửi ảnh lên, Bot AI của Gấu sẽ tự động đọc bill trong 3 giây để:**\n"
                 f"1️⃣ Cấp ngay Role **Nhà Tài Trợ Vàng ⭐** (vĩnh viễn).\n"
-                f"2️⃣ Mở khóa ngay phòng **<#{VIP_PIN_CH_ID}>** (xem thẳng toàn bộ Mã PIN 5 số không quảng cáo).\n"
-                f"3️⃣ Vinh danh bạn lên **<#{HALL_OF_FAME_CH_ID}>**!",
+                f"2️⃣ Mở khóa ngay phòng **Kho PIN Không Quảng Cáo** tại máy chủ chính **Việt Hóa Gấu Công Tâm** (`https://discord.gg/Ac7mcqCuPB`).\n"
+                f"3️⃣ Vinh danh bạn lên **Bảng Vàng Tri Ân**!",
                 view=close_v,
             )
             link_v = discord.ui.View()
@@ -4162,7 +4162,7 @@ async def on_message(message: discord.Message):
 
 
 
-    if not guild or guild.id != GUILD_ID:
+    if not guild or guild.id not in SERVER_CONFIGS:
 
 
 
@@ -4209,18 +4209,25 @@ async def on_message(message: discord.Message):
                     _used_donate_hashes.add(img_hash)
                     if tx_key:
                         _used_donate_hashes.add(tx_key)
-                    await grant_vip_and_honor(guild, member, amount_str=amount_str, note_src="AI Vision duyệt tự động")
+                    main_g = bot.get_guild(GUILD_ID) or guild
+                    main_m = main_g.get_member(member.id)
+                    if not main_m:
+                        try:
+                            main_m = await main_g.fetch_member(member.id)
+                        except Exception:
+                            main_m = None
+                    await grant_vip_and_honor(main_g, main_m or member, amount_str=amount_str, note_src="AI Vision duyệt tự động")
                     await status_msg.edit(
                         content=(
                             f"🎉 **XÁC THỰC BIÊN LAI THÀNH CÔNG! CHÚC MỪNG {member.mention} ĐÃ TRỞ THÀNH NHÀ TÀI TRỢ VÀNG ⭐!** ❤️\n\n"
                             f"• ☕ **Số tiền ghi nhận:** **`{amount_str}`**\n"
                             f"• 👑 **Đã cấp Role:** **Nhà Tài Trợ Vàng ⭐** *(Vĩnh viễn)*\n"
-                            f"• 🔑 **Kho Mã PIN Không Quảng Cáo đã mở khóa cho bạn tại:** **<#{VIP_PIN_CH_ID}>**\n"
+                            f"• 🔑 **Kho Mã PIN Không Quảng Cáo đã mở khóa cho bạn tại:** **<#{VIP_PIN_CH_ID}>** *(Server chính Việt Hóa Gấu Công Tâm: https://discord.gg/Ac7mcqCuPB)*\n"
                             f"• 🏆 **Đã vinh danh tên bạn tại:** **<#{HALL_OF_FAME_CH_ID}>**\n\n"
                             f"❤️ *Thay mặt Studio Gấu Công Tâm cảm ơn tấm lòng của bạn rất nhiều!*"
                         )
                     )
-                    admin_ch = guild.get_channel(ADMIN_CH_ID)
+                    admin_ch = main_g.get_channel(ADMIN_CH_ID)
                     if admin_ch:
                         rev_v = discord.ui.View(timeout=None)
                         rev_v.add_item(discord.ui.Button(
