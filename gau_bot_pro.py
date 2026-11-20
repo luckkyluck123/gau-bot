@@ -3855,6 +3855,7 @@ async def on_interaction(interaction: discord.Interaction):
 
 
                     log_event(f"-> Đã gán Role Thành Viên Gấu cho {member.name}")
+                    asyncio.create_task(update_server_stats_panel(guild))
 
 
 
