@@ -176,6 +176,7 @@ GUIDE_CHANNEL_ID = 1566598834061320355
 
 
 ADMIN_CH_ID = 1564476312926556330 # lệnh-quản-lý
+STATS_CH_ID = 1573147958138900620 # 📊・thống-kê-máy-chủ
 
 SERVER_CONFIGS = {
     1564454825708490867: {
@@ -2518,6 +2519,154 @@ async def update_admin_dashboard(guild):
         log_event(f"Lỗi cập nhật Admin Dashboard: {e}")
 
 
+_stats_panel_lock = asyncio.Lock()
+_stats_last_topic_ts = 0.0
+_stats_last_event_ts = 0.0
+
+
+def _build_server_stats_view():
+    v = discord.ui.View(timeout=None)
+    v.add_item(
+        discord.ui.Button(
+            label="🔄 Làm Mới Ngay",
+            style=discord.ButtonStyle.primary,
+            custom_id="btn_refresh_server_stats",
+        )
+    )
+    return v
+
+
+async def update_server_stats_panel(guild, force_topic: bool = False):
+    global _stats_last_topic_ts
+    if not guild or guild.id != GUILD_ID:
+        return
+    stats_ch = guild.get_channel(STATS_CH_ID)
+    if not stats_ch:
+        return
+    async with _stats_panel_lock:
+        try:
+            approx_total = guild.member_count or 0
+            online_cnt = 0
+            try:
+                fetched_g = await bot.fetch_guild(guild.id, with_counts=True)
+                if fetched_g.approximate_member_count:
+                    approx_total = fetched_g.approximate_member_count
+                if fetched_g.approximate_presence_count is not None:
+                    online_cnt = fetched_g.approximate_presence_count
+            except Exception as fe:
+                log_event(f"-> Cảnh báo fetch_guild counts: {fe}")
+
+            if len(guild.members) < min(10, approx_total):
+                try:
+                    await guild.chunk(cache=True)
+                except Exception:
+                    pass
+
+            members = list(guild.members)
+            human_members = [m for m in members if not m.bot]
+            bot_members = [m for m in members if m.bot]
+            total_cnt = max(len(members), approx_total)
+            human_cnt = len(human_members) if members else max(0, total_cnt - len(bot_members))
+            bot_cnt = len(bot_members)
+            online_cnt = min(online_cnt, total_cnt)
+            offline_cnt = max(0, total_cnt - online_cnt)
+            online_pct = (online_cnt / total_cnt * 100.0) if total_cnt > 0 else 0.0
+            offline_pct = (offline_cnt / total_cnt * 100.0) if total_cnt > 0 else 0.0
+
+            verified_cnt = sum(1 for m in human_members if any(r.id == ROLE_MEMBER_ID for r in m.roles))
+            unverified_cnt = max(0, human_cnt - verified_cnt)
+
+            now_utc = datetime.now(timezone.utc)
+            now_vn = datetime.now(VN_TZ)
+            joined_24h = sum(1 for m in human_members if m.joined_at and (now_utc - m.joined_at).total_seconds() <= 86400)
+            joined_7d = sum(1 for m in human_members if m.joined_at and (now_utc - m.joined_at).total_seconds() <= 7 * 86400)
+            recent_5 = sorted([m for m in human_members if m.joined_at], key=lambda m: m.joined_at, reverse=True)[:5]
+
+            embed = discord.Embed(
+                title="📊 THỐNG KÊ THÀNH VIÊN MÁY CHỦ — VIỆT HÓA GẤU CÔNG TÂM",
+                description="Theo dõi trực tiếp tổng thành viên, trạng thái **Online / Offline**, tỷ lệ duyệt Nội Quy và lượt gia nhập mới.",
+                color=0x2ecc71 if online_cnt > 0 else 0x95a5a6,
+            )
+            embed.add_field(
+                name="👥 Tổng Thành Viên",
+                value=f"**`{total_cnt:,}` thành viên**\n👤 Người chơi: **{human_cnt:,}**\n🤖 Bot: **{bot_cnt:,}**",
+                inline=True,
+            )
+            embed.add_field(
+                name="🟢 Đang Online",
+                value=f"**`{online_cnt:,}`** *({online_pct:.1f}%)*",
+                inline=True,
+            )
+            embed.add_field(
+                name="⚫ Đang Offline",
+                value=f"**`{offline_cnt:,}`** *({offline_pct:.1f}%)*",
+                inline=True,
+            )
+            embed.add_field(
+                name="✅ Đã Duyệt Nội Quy",
+                value=f"**`{verified_cnt:,}`** thành viên",
+                inline=True,
+            )
+            embed.add_field(
+                name="⏳ Chưa Bấm Duyệt",
+                value=f"**`{unverified_cnt:,}`** người",
+                inline=True,
+            )
+            embed.add_field(
+                name="📈 Thành Viên Mới",
+                value=f"• 24h qua: **`+{joined_24h}`**\n• 7 ngày qua: **`+{joined_7d}`**",
+                inline=True,
+            )
+            if recent_5:
+                recent_lines = []
+                for m in recent_5:
+                    j_vn = m.joined_at.astimezone(VN_TZ).strftime("%d/%m %H:%M")
+                    tag = "✅" if any(r.id == ROLE_MEMBER_ID for r in m.roles) else "⏳"
+                    recent_lines.append(f"{tag} **{m.display_name}** (`{m.name}`) — `{j_vn}`")
+                embed.add_field(
+                    name="🆕 5 Thành Viên Vừa Gia Nhập Gần Nhất",
+                    value="\n".join(recent_lines),
+                    inline=False,
+                )
+            embed.set_footer(
+                text=f"Cập nhật lúc {now_vn.strftime('%H:%M:%S %d/%m/%Y')} (Giờ VN) • Tự động làm mới mỗi 5 phút"
+            )
+
+            view = _build_server_stats_view()
+            target_msg = None
+            async for m in stats_ch.history(limit=20):
+                if m.author.id == bot.user.id and m.embeds and "THỐNG KÊ THÀNH VIÊN MÁY CHỦ" in (m.embeds[0].title or ""):
+                    target_msg = m
+                    break
+            if target_msg:
+                await target_msg.edit(embed=embed, view=view)
+            else:
+                await stats_ch.send(embed=embed, view=view)
+
+            now_ts = time.time()
+            new_topic = f"👥 Tổng: {total_cnt:,} ({human_cnt:,} người) | 🟢 Online: {online_cnt:,} | ⚫ Offline: {offline_cnt:,} | ✅ Đã duyệt: {verified_cnt:,}"
+            if (force_topic or (now_ts - _stats_last_topic_ts >= 600)) and stats_ch.topic != new_topic:
+                try:
+                    await stats_ch.edit(topic=new_topic)
+                    _stats_last_topic_ts = now_ts
+                except Exception:
+                    pass
+        except Exception as ex:
+            log_event(f"Lỗi cập nhật bảng thống kê thành viên: {ex}")
+
+
+async def maintain_server_stats_loop():
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            g = bot.get_guild(GUILD_ID)
+            if g:
+                await update_server_stats_panel(g)
+        except Exception as ex:
+            log_event(f"Lỗi vòng lặp thống kê máy chủ: {ex}")
+        await asyncio.sleep(300)
+
+
 
 
 
@@ -3063,10 +3212,15 @@ async def on_ready():
             if scfg.get("enable_dashboard"):
 
                 await update_admin_dashboard(g)
+                await update_server_stats_panel(g, force_topic=True)
 
         except Exception as ex:
 
             log_event(f"-> Cảnh báo khởi tạo banner tại {scfg['name']}: {ex}")
+
+    if not hasattr(bot, '_stats_loop_started'):
+        bot._stats_loop_started = True
+        asyncio.create_task(maintain_server_stats_loop())
 
     if not hasattr(bot, '_voice_music_started'):
             bot._voice_music_started = True
@@ -3139,6 +3293,14 @@ async def on_interaction(interaction: discord.Interaction):
 
 
         log_event(f"👉 Nút bấm được nhấn: {custom_id} từ {interaction.user.name}")
+
+        if custom_id == 'btn_refresh_server_stats':
+            await interaction.response.defer(ephemeral=True)
+            g = interaction.guild or bot.get_guild(GUILD_ID)
+            if g:
+                await update_server_stats_panel(g, force_topic=True)
+            await interaction.followup.send("✅ **Đã cập nhật số liệu thành viên mới nhất!**", ephemeral=True)
+            return
 
 
 
@@ -3762,6 +3924,22 @@ async def on_interaction(interaction: discord.Interaction):
 
 
 
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    global _stats_last_event_ts
+    if member.guild.id == GUILD_ID and (time.time() - _stats_last_event_ts >= 15):
+        _stats_last_event_ts = time.time()
+        await update_server_stats_panel(member.guild)
+
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    global _stats_last_event_ts
+    if member.guild.id == GUILD_ID and (time.time() - _stats_last_event_ts >= 15):
+        _stats_last_event_ts = time.time()
+        await update_server_stats_panel(member.guild)
 
 
 @bot.event
