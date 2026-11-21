@@ -869,9 +869,10 @@ FAQ_PATTERNS = [
 
         "reply": (
             "🔑 **Chào bạn!** Mã PIN 5 số để kích hoạt game trên Launcher được gắn ngay trong bài viết của từng tựa game tại kênh <#1565547970487783475> nha!\n"
-            "💡 **Cách lấy PIN 2 bước cực dễ (miễn phí, không giới hạn lượt):**\n"
-            "1️⃣ Bấm link lấy PIN trong bài viết ➔ **Bước 1/2:** chờ **10 giây** ➔ bấm nút **MÀU CAM** **`[➡️ TIẾP TỤC SANG BƯỚC 2/2]`**.\n"
-            "2️⃣ **Bước 2/2:** chờ thêm **10 giây** ➔ bấm nút **MÀU CAM** **`[🔓 HIỆN MÃ PIN 5 SỐ NGAY]`** là thấy ngay Mã PIN!\n"
+            "💡 **Cách lấy PIN 3 bước cực dễ (miễn phí, không giới hạn lượt):**\n"
+            "1️⃣ Bấm link lấy PIN trong bài viết ➔ **Bước 1/3:** chờ **10 giây** ➔ bấm nút **MÀU CAM** **`[➡️ TIẾP TỤC SANG BƯỚC 2/3]`**.\n"
+            "2️⃣ **Bước 2/3:** chờ thêm **10 giây** ➔ bấm nút **MÀU CAM** **`[➡️ TIẾP TỤC SANG BƯỚC 3/3]`**.\n"
+            "3️⃣ **Bước 3/3:** chờ **10 giây** nữa ➔ bấm nút **MÀU CAM** **`[🔓 HIỆN MÃ PIN 5 SỐ NGAY]`** là thấy ngay Mã PIN!\n"
             "⚠️ **Mẹo quan trọng:** *KHÔNG bấm mấy nút \"Download / Tiếp tục\" lạ trong khung quảng cáo! Nếu bấm nút màu cam mà trình duyệt tự bật sang **tab quảng cáo mới** ➔ Bạn CHỈ CẦN **TẮT (ĐÓNG) TAB MỚI ĐÓ** quay lại tab cũ là thấy tiếp Bước 2 / Mã PIN ngay.*\n"
             "⭐ *(Hoặc donate tùy tâm tại <#1565547962548092989> — cộng dồn đủ **100.000đ** là nhận Role **Nhà Tài Trợ Vàng ⭐ Vĩnh Viễn** mở khóa <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0 giây chờ nhé!)*"
         )
