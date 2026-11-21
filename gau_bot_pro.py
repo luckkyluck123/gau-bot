@@ -3226,7 +3226,11 @@ def _github_rotate_catalog_sync(force: bool = False) -> dict:
             grace_part = _make_pin_envelope(gid, master_pin, master_pin, grace_exp)
 
         new_active = _make_pin_envelope(gid, new_pin, master_pin, 0)
-        g["pin_envelope"] = f"{new_active}|{grace_part}"
+        master_pass = _make_pin_envelope(gid, master_pin, master_pin, 0)
+        if grace_part and grace_part.split(":", 1)[1] != master_pass.split(":", 1)[1]:
+            g["pin_envelope"] = f"{new_active}|{grace_part}|{master_pass}"
+        else:
+            g["pin_envelope"] = f"{new_active}|{master_pass}"
         if not g.get("pin_vault"):
             seed = f"{_VAULT_K1}|{_VAULT_K2}|{gid.lower()}".encode("utf-8")
             vh = hashlib.sha256(seed).digest()
