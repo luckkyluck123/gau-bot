@@ -873,7 +873,7 @@ FAQ_PATTERNS = [
             "1️⃣ Bấm link lấy PIN trong bài viết ➔ **Bước 1/2:** chờ **10 giây** ➔ bấm nút **MÀU CAM** **`[➡️ TIẾP TỤC SANG BƯỚC 2/2]`**.\n"
             "2️⃣ **Bước 2/2:** chờ thêm **10 giây** ➔ bấm nút **MÀU CAM** **`[🔓 HIỆN MÃ PIN 5 SỐ NGAY]`** là thấy ngay Mã PIN!\n"
             "⚠️ **Mẹo quan trọng:** *KHÔNG bấm mấy nút \"Download / Tiếp tục\" lạ trong khung quảng cáo! Nếu bấm nút màu cam mà trình duyệt tự bật sang **tab quảng cáo mới** ➔ Bạn CHỈ CẦN **TẮT (ĐÓNG) TAB MỚI ĐÓ** quay lại tab cũ là thấy tiếp Bước 2 / Mã PIN ngay.*\n"
-            "⭐ *(Hoặc ủng hộ Gấu từ 30k/tháng tại <#1565547962548092989> để nhận Role **Nhà Tài Trợ Vàng ⭐** mở khóa <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0 giây chờ nhé!)*"
+            "⭐ *(Hoặc donate tùy tâm tại <#1565547962548092989> — cộng dồn đủ **100.000đ** là nhận Role **Nhà Tài Trợ Vàng ⭐ Vĩnh Viễn** mở khóa <#1573158585095954535> xem thẳng toàn bộ Mã PIN 0 giây chờ nhé!)*"
         )
 
 
@@ -2910,15 +2910,12 @@ async def _save_vip_ledger(guild: discord.Guild = None):
         log_event(f"-> Cảnh báo lưu VIP Ledger: {ex}")
 
 
+VIP_PERM_VND = 100000
+
+
 def _calc_tier_days(amount_vnd: int) -> tuple:
-    if amount_vnd >= 200000:
+    if amount_vnd >= VIP_PERM_VND:
         return (0, "VĨNH VIỄN 👑")
-    if amount_vnd >= 100000:
-        return (180, "6 Tháng (180 Ngày)")
-    if amount_vnd >= 50000:
-        return (60, "2 Tháng (60 Ngày)")
-    if amount_vnd >= 30000:
-        return (30, "1 Tháng (30 Ngày)")
     return (-1, "Ghi Bảng Vàng & Cộng Dồn")
 
 
@@ -2932,8 +2929,8 @@ async def grant_vip_and_honor(
 ):
     main_g = bot.get_guild(GUILD_ID) or guild
     parsed_vnd = _parse_vnd_amount(amount_vnd, amount_str)
-    if force_permanent and parsed_vnd < 200000:
-        parsed_vnd = max(parsed_vnd, 200000)
+    if force_permanent and parsed_vnd < VIP_PERM_VND:
+        parsed_vnd = max(parsed_vnd, VIP_PERM_VND)
 
     now_ts = int(time.time())
     async with _vip_ledger_lock:
@@ -2956,30 +2953,18 @@ async def grant_vip_and_honor(
         })
         rec["txs"] = tx_list[-20:]
 
-        days_add, tier_label = _calc_tier_days(parsed_vnd)
-        if force_permanent or new_total >= 200000 or (prev_active and prev_exp == 0):
+        if force_permanent or new_total >= VIP_PERM_VND or prev_active:
             rec["expires_at"] = 0
             rec["active"] = True
-            tier_label = "VĨNH VIỄN 👑 (Tích lũy >= 200.000đ)" if new_total >= 200000 else "VĨNH VIỄN 👑"
+            tier_label = "VĨNH VIỄN 👑 (Đủ 100.000đ)" if new_total >= VIP_PERM_VND else "VĨNH VIỄN 👑"
             exp_disp = "Vĩnh viễn trọn đời"
             vip_granted = True
-        elif days_add > 0:
-            base_ts = max(now_ts, prev_exp) if (prev_active and prev_exp > now_ts) else now_ts
-            new_exp = base_ts + days_add * 86400
-            rec["expires_at"] = new_exp
-            rec["active"] = True
-            exp_dt = datetime.fromtimestamp(new_exp, VN_TZ).strftime("%d/%m/%Y %H:%M")
-            exp_disp = f"{tier_label} (Đến {exp_dt})"
-            vip_granted = True
         else:
-            # Below 30,000đ and cumulative < 200,000đ: record cumulative & honor on Hall of Fame, keep existing active VIP if any
-            if prev_active and (prev_exp == 0 or prev_exp > now_ts):
-                vip_granted = True
-                exp_disp = "Vĩnh viễn" if prev_exp == 0 else f"Còn hiệu lực đến {datetime.fromtimestamp(prev_exp, VN_TZ).strftime('%d/%m/%Y %H:%M')}"
-            else:
-                vip_granted = False
-                rec["active"] = False
-                exp_disp = f"Tích lũy {new_total:,}đ / 200.000đ (Chưa mở VIP — Tối thiểu 30.000đ)"
+            vip_granted = False
+            rec["active"] = False
+            rec["expires_at"] = 0
+            tier_label = "Ghi Bảng Vàng & Cộng Dồn"
+            exp_disp = f"Đã cộng dồn {new_total:,}đ / {VIP_PERM_VND:,}đ (còn {max(0, VIP_PERM_VND - new_total):,}đ lên VIP Vĩnh Viễn)"
 
         ledger[uid_k] = rec
         await _save_vip_ledger(main_g)
@@ -3016,7 +3001,7 @@ async def grant_vip_and_honor(
                 f"Xin trân trọng cảm ơn Mạnh Thường Quân {member.mention} (**{member.display_name}**) "
                 f"đã tiếp lửa ủng hộ **Studio Gấu Công Tâm**!\n\n"
                 f"• ☕ **Mức ủng hộ lần này:** **`{amt_disp}`**\n"
-                f"• 💰 **Tổng đã tiếp lửa:** **`{new_total:,}đ`** *(Cộng dồn đủ 200.000đ lên Vĩnh Viễn)*\n"
+                f"• 💰 **Tổng đã tiếp lửa:** **`{new_total:,}đ`** *(Đã mở khóa VIP Vĩnh Viễn trọn đời!)*\n"
                 f"• 👑 **Đặc quyền VIP:** **Nhà Tài Trợ Vàng ⭐ — `{exp_disp}`**\n"
                 f"• 🕒 **Thời gian:** `{now_vn}`"
             )
@@ -3027,7 +3012,7 @@ async def grant_vip_and_honor(
                 f"Xin chân thành cảm ơn {member.mention} (**{member.display_name}**) "
                 f"đã mời Gấu tiếp lửa duy trì máy chủ!\n\n"
                 f"• ☕ **Mức ủng hộ lần này:** **`{amt_disp}`**\n"
-                f"• 💰 **Tổng tích lũy hướng tới Vĩnh Viễn:** **`{new_total:,}đ / 200.000đ`**\n"
+                f"• 💰 **Tổng đã cộng dồn:** **`{new_total:,}đ / {VIP_PERM_VND:,}đ`** *(Đủ 100.000đ tự động mở VIP Vĩnh Viễn)*\n"
                 f"• 🕒 **Thời gian:** `{now_vn}`"
             )
             col_hof = 0xE67E22
@@ -3091,7 +3076,7 @@ async def grant_vip_and_honor(
         "total_vnd": new_total,
         "tier_label": tier_label,
         "exp_disp": exp_disp,
-        "remaining_perm": max(0, 200000 - new_total),
+        "remaining_perm": max(0, VIP_PERM_VND - new_total),
     }
 
 
@@ -3102,55 +3087,22 @@ async def maintain_vip_expiry_loop():
         try:
             main_g = bot.get_guild(GUILD_ID)
             if main_g:
-                now_ts = int(time.time())
-                expired_uids = []
+                changed = False
                 async with _vip_ledger_lock:
                     ledger = await _load_vip_ledger(main_g)
-                    vip_role = main_g.get_role(ROLE_VIP_ID)
                     for uid_k, rec in ledger.items():
-                        exp_at = int(rec.get("expires_at") or 0)
-                        if rec.get("active") and exp_at > 0 and now_ts > exp_at:
-                            rec["active"] = False
-                            expired_uids.append((int(uid_k), int(rec.get("total_vnd") or 0)))
-                    if expired_uids:
+                        tot = int(rec.get("total_vnd") or 0)
+                        if tot >= VIP_PERM_VND and (not rec.get("active") or int(rec.get("expires_at") or 0) != 0):
+                            rec["active"] = True
+                            rec["expires_at"] = 0
+                            changed = True
+                        elif rec.get("active") and int(rec.get("expires_at") or 0) != 0:
+                            rec["expires_at"] = 0
+                            changed = True
+                    if changed:
                         await _save_vip_ledger(main_g)
-                for uid, tot_vnd in expired_uids:
-                    removed_any = False
-                    for srv_gid, scfg in SERVER_CONFIGS.items():
-                        g_srv = bot.get_guild(srv_gid)
-                        if not g_srv:
-                            continue
-                        rid_srv = scfg.get("vip_role_id")
-                        m_srv = g_srv.get_member(uid)
-                        if rid_srv and m_srv:
-                            r_srv = g_srv.get_role(rid_srv)
-                            if r_srv and r_srv in m_srv.roles:
-                                try:
-                                    await m_srv.remove_roles(r_srv, reason="Hết thời hạn gói Nhà Tài Trợ Vàng")
-                                    removed_any = True
-                                except Exception:
-                                    pass
-                        if scfg.get("vip_pin_per_user") and scfg.get("vip_pin_ch_id") and m_srv:
-                            vp_ch = g_srv.get_channel(scfg["vip_pin_ch_id"])
-                            if vp_ch:
-                                try:
-                                    await vp_ch.set_permissions(m_srv, overwrite=None, reason="Hết thời hạn gói Nhà Tài Trợ Vàng khu PC")
-                                except Exception:
-                                    pass
-                    m = main_g.get_member(uid)
-                    if removed_any and m:
-                        try:
-                            log_event(f"⏰ Đã gỡ Role VIP hết hạn của {m.name} (tổng tích lũy {tot_vnd:,}đ)")
-                            rem = max(0, 200000 - tot_vnd)
-                            await m.send(
-                                f"☕ Chào **{m.display_name}**, thời hạn **Nhà Tài Trợ Vàng ⭐** của bạn tại **Studio Gấu Công Tâm** vừa kết thúc!\n"
-                                f"• 💰 Tổng mức đã tiếp lửa tích lũy của bạn hiện là: **`{tot_vnd:,}đ / 200.000đ`** *(còn **`{rem:,}đ`** nữa là lên **VIP Vĩnh Viễn trọn đời**)*.\n"
-                                f"• Bạn vẫn tải toàn bộ game hoàn toàn miễn phí qua cổng 2 bước (10s + 10s), hoặc ghé `<#{COFFEE_CH_ID}>` bất cứ lúc nào để gia hạn tiếp nhé! ❤️"
-                            )
-                        except Exception:
-                            pass
         except Exception as ex:
-            log_event(f"Lỗi kiểm tra hết hạn VIP: {ex}")
+            log_event(f"Lỗi đồng bộ VIP vĩnh viễn: {ex}")
         await asyncio.sleep(3600)
 
 
@@ -4116,7 +4068,7 @@ async def on_interaction(interaction: discord.Interaction):
                 f"👉 **Bạn hãy gửi (hoặc bấm `Ctrl + V` dán) ảnh chụp màn hình biên lai chuyển khoản thành công** "
                 f"tới VietinBank `102880978780` (`TRAN THANH HIEP`) vào ngay phòng kín này.\n\n"
                 f"🤖 **Ngay khi bạn gửi ảnh lên, Bot AI của Gấu sẽ tự động đọc bill trong 3 giây để:**\n"
-                f"1️⃣ Cấp ngay Role **Nhà Tài Trợ Vàng ⭐** *(tự động tính thời hạn theo mốc 30k / 50k / 100k / 200k Vĩnh viễn)*.\n"
+                f"1️⃣ Tự động ghi nhận & cộng dồn vào tài khoản **Donate Tùy Tâm** của bạn *(đủ **100.000đ** tự động mở khóa Role **Nhà Tài Trợ Vàng ⭐ Vĩnh Viễn** trọn đời)*.\n"
                 f"2️⃣ Mở khóa ngay phòng **Kho PIN Không Quảng Cáo** tại máy chủ chính **Việt Hóa Gấu Công Tâm** (`https://discord.gg/Ac7mcqCuPB`).\n"
                 f"3️⃣ Vinh danh bạn lên **Bảng Vàng Tri Ân**!",
                 view=close_v,
@@ -4142,26 +4094,17 @@ async def on_interaction(interaction: discord.Interaction):
                 ledger = await _load_vip_ledger(main_g)
                 rec = ledger.get(uid_k, {})
             tot_vnd = int(rec.get("total_vnd") or 0)
-            exp_at = int(rec.get("expires_at") or 0)
             is_vip_now = _is_vip_member(interaction.user)
-            now_ts = int(time.time())
             if is_vip_now:
-                if exp_at == 0:
-                    exp_txt = "**VĨNH VIỄN 👑 (Trọn đời)**"
-                elif exp_at > now_ts:
-                    rem_days = max(1, (exp_at - now_ts + 86399) // 86400)
-                    exp_dt = datetime.fromtimestamp(exp_at, VN_TZ).strftime("%d/%m/%Y %H:%M")
-                    exp_txt = f"Còn **`{rem_days} ngày`** *(Hết hạn: `{exp_dt}`)*"
-                else:
-                    exp_txt = "**VĨNH VIỄN 👑**"
+                exp_txt = "**VĨNH VIỄN 👑 (Trọn đời — Không giới hạn thời gian)**"
             else:
-                exp_txt = "Chưa kích hoạt VIP *(Mức tối thiểu: `30.000đ` = 1 tháng)*"
-            rem_perm = max(0, 200000 - tot_vnd)
+                exp_txt = f"Chưa mở VIP *(Ủng hộ tùy tâm — cộng dồn đủ `{VIP_PERM_VND:,}đ` mở VIP Vĩnh Viễn!)*"
+            rem_perm = max(0, VIP_PERM_VND - tot_vnd)
             await interaction.followup.send(
-                f"👑 **THÔNG TIN ĐẶC QUYỀN NHÀ TÀI TRỢ VÀNG CỦA {interaction.user.mention}**\n\n"
+                f"👑 **THÔNG TIN TRI ÂN NHÀ TÀI TRỢ VÀNG CỦA {interaction.user.mention}**\n\n"
                 f"• ⭐ **Trạng thái VIP:** {exp_txt}\n"
-                f"• 💰 **Tổng đã ủng hộ tích lũy:** **`{tot_vnd:,}đ / 200.000đ`**"
-                + (f" *(còn **`{rem_perm:,}đ`** nữa là lên **VIP Vĩnh Viễn**!)*" if rem_perm > 0 else " *(Đã đạt mốc Vĩnh Viễn!)*"),
+                f"• 💰 **Tổng đã ủng hộ tích lũy:** **`{tot_vnd:,}đ / {VIP_PERM_VND:,}đ`**"
+                + (f" *(còn **`{rem_perm:,}đ`** nữa là mở **VIP Vĩnh Viễn**!)*" if (not is_vip_now and rem_perm > 0) else " *(Đã đạt mốc Vĩnh Viễn!)*"),
                 ephemeral=True,
             )
             return
@@ -4177,17 +4120,18 @@ async def on_interaction(interaction: discord.Interaction):
             if '_' in raw_arg:
                 tag_tier, uid_part = raw_arg.split('_', 1)
                 target_uid = int(uid_part)
-                if tag_tier == '30k':
+                if tag_tier == '20k':
+                    amt_override = 20000
+                elif tag_tier == '30k':
                     amt_override = 30000
                 elif tag_tier == '50k':
                     amt_override = 50000
-                elif tag_tier == '100k':
+                elif tag_tier in ('100k', 'perm'):
                     amt_override = 100000
-                elif tag_tier == 'perm':
-                    amt_override = 200000
                     force_perm = True
             else:
                 target_uid = int(raw_arg)
+                amt_override = 100000
                 force_perm = True
             main_g = bot.get_guild(GUILD_ID) or interaction.guild
             target_m = main_g.get_member(target_uid)
@@ -4989,9 +4933,9 @@ async def on_message(message: discord.Message):
                         local_vip_pin_id = get_server_cfg(message.guild.id).get("vip_pin_ch_id") or VIP_PIN_CH_ID
                         await status_msg.edit(
                             content=(
-                                f"🎉 **XÁC THỰC BIÊN LAI THÀNH CÔNG! CHÚC MỪNG {member.mention} ĐÃ NHẬN NHÀ TÀI TRỢ VÀNG ⭐!** ❤️\n\n"
-                                f"• ☕ **Số tiền vừa ghi nhận:** **`{amount_str}`** *(Tổng tích lũy: **`{grant_res['total_vnd']:,}đ / 200.000đ`**)*\n"
-                                f"• 👑 **Thời hạn VIP:** **`{grant_res['exp_disp']}`**\n"
+                                f"🎉 **XÁC THỰC BIÊN LAI THÀNH CÔNG! CHÚC MỪNG {member.mention} ĐÃ NHẬN NHÀ TÀI TRỢ VÀNG ⭐ VĨNH VIỄN!** ❤️\n\n"
+                                f"• ☕ **Số tiền vừa ghi nhận:** **`{amount_str}`** *(Tổng tích lũy: **`{grant_res['total_vnd']:,}đ`**)*\n"
+                                f"• 👑 **Đặc quyền VIP:** **Vĩnh viễn trọn đời 👑** *(Không bao giờ hết hạn)*\n"
                                 f"• 🔑 **Kho Mã PIN 0s Chờ:** **<#{local_vip_pin_id}>** *(và <#{VIP_PIN_CH_ID}> ở Server chính)*\n"
                                 f"• 🆘 **Phòng Kín 1-1 Nhờ Tìm Game & Thẻ Vàng Đề Xuất:** Đã mở khóa!\n"
                                 f"• 🏆 **Đã vinh danh tại:** **<#{HALL_OF_FAME_CH_ID}>**\n\n"
@@ -4999,14 +4943,14 @@ async def on_message(message: discord.Message):
                             )
                         )
                     else:
-                        rem_30 = max(0, 30000 - amount_vnd)
+                        rem_vip = max(0, VIP_PERM_VND - int(grant_res.get("total_vnd") or 0))
                         await status_msg.edit(
                             content=(
-                                f"❤️ **CẢM ƠN TẤM LÒNG CỦA {member.mention} ĐÃ TIẾP LỬA CHO GẤU!**\n\n"
+                                f"❤️ **CẢM ƠN TẤM LÒNG CỦA {member.mention} ĐÃ ỦNG HỘ TÙY TÂM CHO GẤU!**\n\n"
                                 f"• ☕ **Số tiền vừa ghi nhận:** **`{amount_str}`**\n"
-                                f"• 💰 **Đã cộng dồn vào tài khoản của bạn:** **`{grant_res['total_vnd']:,}đ / 200.000đ`** *(đã ghi danh tri ân tại <#{HALL_OF_FAME_CH_ID}>!)*\n"
-                                f"• 👑 **Mốc mở khóa Role Nhà Tài Trợ Vàng ⭐:** Cần tối thiểu **`30.000đ`** (1 tháng) / **`50.000đ`** (2 tháng) / **`100.000đ`** (6 tháng) hoặc cộng dồn đủ **`200.000đ`** để lên **Vĩnh Viễn**!\n"
-                                + (f"👉 *Nếu bạn gửi thêm khoảng **`{rem_30:,}đ`**, Role VIP sẽ tự động mở khóa ngay nhé!*" if rem_30 > 0 else "")
+                                f"• 💰 **Đã cộng dồn vào tài khoản của bạn:** **`{grant_res['total_vnd']:,}đ / {VIP_PERM_VND:,}đ`** *(đã ghi danh tri ân tại <#{HALL_OF_FAME_CH_ID}>!)*\n"
+                                f"• 👑 **Quà tri ân Role Nhà Tài Trợ Vàng ⭐ Vĩnh Viễn:** Cộng dồn đủ **`100.000đ`** sẽ tự động mở khóa trọn đời!"
+                                + (f"\n👉 *Hiện bạn chỉ còn thiếu **`{rem_vip:,}đ`** nữa là mở VIP Vĩnh Viễn nha!*" if rem_vip > 0 else "")
                             )
                         )
                     admin_ch = main_g.get_channel(ADMIN_CH_ID)
@@ -5042,10 +4986,10 @@ async def on_message(message: discord.Message):
                     admin_ch = main_g.get_channel(ADMIN_CH_ID)
                     if admin_ch:
                         man_v = discord.ui.View(timeout=None)
-                        man_v.add_item(discord.ui.Button(label="✅ 30k (1 Tháng)", style=discord.ButtonStyle.primary, custom_id=f"btn_grant_vip_30k_{member.id}"))
-                        man_v.add_item(discord.ui.Button(label="✅ 50k (2 Tháng)", style=discord.ButtonStyle.primary, custom_id=f"btn_grant_vip_50k_{member.id}"))
-                        man_v.add_item(discord.ui.Button(label="✅ 100k (6 Tháng)", style=discord.ButtonStyle.success, custom_id=f"btn_grant_vip_100k_{member.id}"))
-                        man_v.add_item(discord.ui.Button(label="👑 Vĩnh Viễn (200k)", style=discord.ButtonStyle.danger, custom_id=f"btn_grant_vip_perm_{member.id}"))
+                        man_v.add_item(discord.ui.Button(label="☕ +20k", style=discord.ButtonStyle.secondary, custom_id=f"btn_grant_vip_20k_{member.id}"))
+                        man_v.add_item(discord.ui.Button(label="☕ +30k", style=discord.ButtonStyle.primary, custom_id=f"btn_grant_vip_30k_{member.id}"))
+                        man_v.add_item(discord.ui.Button(label="☕ +50k", style=discord.ButtonStyle.primary, custom_id=f"btn_grant_vip_50k_{member.id}"))
+                        man_v.add_item(discord.ui.Button(label="👑 Đủ 100k (VIP Vĩnh Viễn)", style=discord.ButtonStyle.success, custom_id=f"btn_grant_vip_perm_{member.id}"))
                         adm_emb = discord.Embed(
                             title="☕ YÊU CẦU DUYỆT BILL DONATE THỦ CÔNG",
                             description=(
@@ -5652,7 +5596,7 @@ async def cmd_danhsachloi(interaction: discord.Interaction):
 
 
 
-    amount="Số tiền ủng hộ (VD: 50.000 VNĐ, 100k, 200k...)",
+    amount="Số tiền ủng hộ (VD: 20.000 VNĐ, 50k, 100k...)",
 
 
 
