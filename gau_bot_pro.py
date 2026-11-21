@@ -3343,13 +3343,23 @@ async def rotate_daily_pins_24h(force: bool = False) -> dict:
                     try:
                         starter = await t.fetch_message(t.id)
                         old_c = starter.content or ""
-                        new_c = re.sub(
-                            r"https://(?:link4m\.(?:net|org|co|com)/[A-Za-z0-9_-]+|luckkyluck123\.github\.io/(?:GauLauncher-Data/)?pin\.html[^\s)\]]*)",
-                            matched_g["link4m_url"],
-                            old_c,
-                        )
-                        if new_c != old_c and len(new_c) <= 2000:
-                            await starter.edit(content=new_c)
+                        pin_rx = r"https://(?:link4m\.(?:net|org|co|com)/[A-Za-z0-9_-]+|luckkyluck123\.github\.io/(?:GauLauncher-Data/)?pin\.html[^\s)\]]*)"
+                        new_c = re.sub(pin_rx, matched_g["link4m_url"], old_c)
+                        new_embeds = []
+                        emb_changed = False
+                        for emb_obj in getattr(starter, "embeds", []) or []:
+                            ed = emb_obj.to_dict()
+                            if ed.get("description"):
+                                nd = re.sub(pin_rx, matched_g["link4m_url"], ed["description"])
+                                if nd != ed["description"]:
+                                    ed["description"] = nd
+                                    emb_changed = True
+                            new_embeds.append(discord.Embed.from_dict(ed))
+                        if (new_c != old_c and len(new_c) <= 2000) or emb_changed:
+                            if emb_changed:
+                                await starter.edit(content=new_c if len(new_c) <= 2000 else old_c, embeds=new_embeds)
+                            else:
+                                await starter.edit(content=new_c)
                             updated_threads += 1
                             await asyncio.sleep(0.4)
                     except Exception as te:
